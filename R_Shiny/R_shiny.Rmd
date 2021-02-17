@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(shiny)
 ```
 
-
+#ligegyldig
 ```{r}
 data(airquality)
 
@@ -67,7 +67,7 @@ server <- function(input, output) {
 shinyApp(ui = ui, server = server)
 ```
 
-
+#ligegyldig
 ```{r}
 # Import libraries
 library(shiny)
@@ -186,7 +186,7 @@ shinyApp(ui = ui, server = server)
 ```
 
 # Our Shiny
-
+## version 1
 ```{r Denne virker}
 knitr::opts_chunk$set(
   collapse = TRUE,
@@ -268,6 +268,9 @@ server <- function(input, output) {
 }
 shinyApp(ui = ui, server = server)
 ```
+
+
+## version 2.0
 ```{r tester}
 knitr::opts_chunk$set(
   collapse = TRUE,
