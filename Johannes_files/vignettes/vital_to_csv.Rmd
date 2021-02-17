@@ -1,0 +1,19 @@
+---
+title: "Convert .vital to .csv"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Convert .vital to .csv}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+Use the python module parse_vital to convert a .vital file to individual .csv files.
+
+Use pypy to speed things up.
+
+```
+conda activate pypy 
+parse_vital --saveall --gzip <vital_file.vital>
+```
+
+This creates a folder named [vital_file] containing a csv file for each track in .vital. Each csv will be compressed with gzip, which can be read directly with read_csv.
