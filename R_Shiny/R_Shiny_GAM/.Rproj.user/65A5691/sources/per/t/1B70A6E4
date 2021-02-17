@@ -1,0 +1,25 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1613568727304.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "3222389700",
+    "id" : "1B70A6E4",
+    "lastKnownWriteTime" : 1613566991,
+    "last_content_update" : 1613568952801,
+    "path" : "C:/Users/simon/OneDrive - Aarhus universitet/Uni/Datavidenskab/4. semester/Dataprojekt/Project/DataProject-GAM/R_Shiny/R_shiny.Rmd",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "116,2",
+        "scrollLine" : "83"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_markdown"
+}
