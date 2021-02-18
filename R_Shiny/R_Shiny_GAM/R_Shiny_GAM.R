@@ -83,9 +83,9 @@ ui <- fluidPage(theme = shinytheme("cerulean"),
 
 server <- function(input, output) {
     
-    output$samlet_plots <- renderPlot({
-        
-        cvp_gam <- bam(
+    
+    cvp_gam <- reactive({
+        bam(
             CVP ~ s(qrs_rel_index, bs = 'cc', k = input$qrs_rel_index) +
                 s(insp_rel_index, bs = 'cc', k = input$insp_rel_index) +
                 ti(
@@ -99,8 +99,13 @@ server <- function(input, output) {
             #rho = 0.95,
             data = cvp_indexed,
             nthreads = 16 # Number of (virtual) cores
-        )
-        gratia::draw(cvp_gam)
+            )
+    })
+    
+    output$samlet_plots <- renderPlot({
+        
+        gratia::draw(cvp_gam())
+        
     })# slutter renderPlot her
     
     output$bin_plot <- renderPlot({
