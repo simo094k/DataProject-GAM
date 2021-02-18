@@ -76,12 +76,16 @@ ui <- fluidPage(theme = shinytheme("cerulean"),
                                     )
                            ),
                            
+                           tabPanel("Visualize GAM", 
+                                    visualize_GAM_UI('viz_gam')
+                           ),
+                           
                            tabPanel("Info", "Lavet af en sej studiegruppe")
                            
                 )#navbarpage 
 )
 
-server <- function(input, output) {
+server <- function(input, output, session) {
     
     
     cvp_gam <- reactive({
@@ -114,6 +118,8 @@ server <- function(input, output) {
         bins = seq(min(x),max(x), length.out = input$Bins_antal +1)
         hist(x,breaks = bins)
     })
+    
+    visualize_GAM_server('viz_gam', gam_obj = cvp_gam)
     
 }
 # Run the application 
