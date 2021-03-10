@@ -1,0 +1,319 @@
+---
+title: "ting_og_sager"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("C:/Users/caspe/OneDrive - Aarhus Universitet/Dokumenter/Dataprojekt/Projekt/git_simon/DataProject-GAM/R")
+
+pt03 <- readRDS("C:/Users/caspe/OneDrive - Aarhus Universitet/Dokumenter/Dataprojekt/Projekt/git_simon/DataProject-GAM/Datasets/thoracotomy_waveforms_prelim/pt03.rds")
+```
+
+
+## test med indeks for thorakotomi
+
+```{r}
+library(waveformtools)
+library(tidyverse)
+library(mgcv)
+library(hms)
+library(shiny)
+library(shinythemes)
+library(shinyTime)
+library(data.table)
+library(readr)
+library(dplyr)
+```
+
+created new dataframe where we can add appropriate indexes/variables
+
+```{r}
+pt03_ <- data.frame(pt03$open_chest$CVP) # extract cvp numbers from data
+pt03_ <- pt03_ %>% mutate(ms = 0) # add time index variable
+
+names(pt03_)[1] <- "CVP"
+
+qrs_ms <- sort(pt03$open_chest$QRSmarker_ms)
+```
+
+there are 125 measurements each second -> 1/125 = 0.008. This means that there are 0.008 seconds between each measurement. To get ms we multiply with 1.000.
+
+```{r}
+for (i in 2:length(pt03_$CVP)){
+  pt03_$ms[i] <- pt03_$ms[i-1] + 8 # ms between each observation (0.008*1000)
+}
+```
+
+this code is to give an index to each measurement for which position it has in its heartbeat cycle.
+
+```{r}
+pt03_ <- pt03_ %>% mutate(qrs_idx = 1)
+
+q <- 2
+z <- 2
+i <- 1
+
+while (i < length(qrs_ms)){
+  if (qrs_ms[i] > pt03_$ms[q]){
+    pt03_$qrs_idx[q] <- z
+    z <- z + 1
+    q <- q + 1
+  }
+  else {
+    i <- i + 1
+    pt03_$qrs_idx[q] <- 1
+    z <- 2
+    q <- q + 1
+  }
+}
+
+
+```
+
+Only data where we know we know start and end of heartbeat cycle
+
+```{r}
+for (i in 2:length(pt03_$CVP)){
+  if (pt03_$qrs_idx[i] == 1){
+    m <- i
+    break
+  }
+}
+
+for (i in length(pt03_$CVP):1){
+  if (pt03_$qrs_idx[i] != 1){
+    n <- i
+    break
+  }
+}
+
+new_pt03 <- pt03_ %>% slice(m:n)
+```
+
+convert ms to second
+
+```{r}
+new_pt03 <- new_pt03 %>% mutate(sec = ms/1000)
+```
+
+for the relative position in heartbeat cycle
+
+```{r}
+new_pt03 <- new_pt03 %>% mutate(qrs_rel_idx = 1)
+
+idx_of_first <- 1
+for (i in 1:(length(new_pt03$CVP)-1)){
+  if (new_pt03$qrs_idx[i+1] == 1){
+    denom <- new_pt03$qrs_idx[i]
+    for (j in idx_of_first:i){
+      new_pt03$qrs_rel_idx[j] <- new_pt03$qrs_idx[j]/denom
+    }
+    idx_of_first <- i+1
+  }
+}
+
+for (i in length(new_pt03$CVP):1){
+  if (new_pt03$qrs_idx[i] == 1){
+    denom <- new_pt03$qrs_idx[length(new_pt03$CVP)]
+    for (j in i:length(new_pt03$CVP)){
+      new_pt03$qrs_rel_idx[j] <- new_pt03$qrs_idx[j]/denom
+    }
+  break}
+}
+```
+
+for position in respiration cycle
+
+```{r}
+new_1pt03 <- new_pt03  %>% slice(187:length(new_pt03$CVP)) %>% mutate(insp_idx = 1)
+
+index_start_insp <- 1
+for (i in 2:length(new_1pt03$CVP)){
+  time_start <- new_1pt03$sec[index_start_insp]
+  if ((new_1pt03$sec[i] - time_start) > 5) {
+    index_start_insp <- i
+  }
+  else {
+    new_1pt03$insp_idx[i] <- new_1pt03$insp_idx[i-1] + 1
+  }
+}
+```
+
+for relative position in respiration cycle
+
+```{r}
+new_1pt03 <- new_1pt03 %>% mutate(insp_rel_idx = 1)
+
+idx_of_first <- 1
+for (i in 1:(length(new_1pt03$CVP)-1)){
+  if (new_1pt03$insp_idx[i+1] == 1){
+    denom <- new_1pt03$insp_idx[i]
+    for (j in idx_of_first:i){
+      new_1pt03$insp_rel_idx[j] <- new_1pt03$insp_idx[j]/denom
+    }
+    idx_of_first <- i+1
+  }
+}
+
+for (i in length(new_1pt03$CVP):1){
+  if (new_1pt03$insp_idx[i] == 1){
+    denom <- new_1pt03$insp_idx[length(new_pt03$CVP)]
+    for (j in i:length(new_1pt03$CVP)){
+      new_1pt03$insp_rel_idx[j] <- new_1pt03$insp_idx[j]/denom
+    }
+  break}
+}
+```
+
+inspect data - note: time variable is not relevant for this graph. Only used to find data with less noise.
+
+```{r}
+new_1pt03$CVP %>% 
+  dygraph_signal()
+```
+
+slice after finding appropriate time slot
+
+```{r}
+sliced_pt03 <- new_1pt03 %>% slice(1:7500) %>% mutate(time_s_s = 0)
+
+for (i in 2:length(sliced_pt03$CVP)){
+  sliced_pt03$time_s_s[i] <- sliced_pt03$time_s_s[i-1] + 0.008 # sec between each observation (0.008)
+}
+```
+
+Gam-modelling
+
+```{r}
+
+cvp_gam <- bam(
+        CVP ~ s(qrs_rel_idx, bs = 'cc', k = 50) +
+            s(insp_rel_idx, bs = 'cc', k = 30) +
+            ti(
+                qrs_rel_idx,
+                insp_rel_idx,
+                bs = c('cc', 'cc'),
+                k = c(20, 10)
+            ) +
+            s(time_s_s),
+        method = 'REML',
+        data = sliced_pt03,
+        nthreads = 16 # Number of (virtual) cores
+    )
+
+
+```
+
+Visualise GAM
+
+```{r, fig.width = 10, fig.height = 7, out.width="100%"}
+gratia::draw(cvp_gam)
+```
+
+
+
+Mads' Shiny. Work in progress
+
+```{r}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+
+
+ui <- fluidPage(theme = shinytheme("cerulean"),
+  navbarPage("Shiny stuff",
+             
+  # Page header
+  tabPanel("Justering af parametre",
+  # Input values
+  sidebarPanel(
+    h3("Inputs"),
+    sliderInput("qrs_rel_index", label = "qrs_rel_index - k",
+                min = 0, max = 100,
+                value = 50),
+    sliderInput("insp_rel_index", label = "insp_rel_index - k",
+                min = 0, max = 100,
+                value = 30),
+    selectInput("method", label = "Method:", 
+                choices = list("REML" = "REML", "P-REML" = "P-REML", "ML" = "ML", 
+                               "P-ML" = "P-ML",  "fREML"="fREML"), 
+                selected = "REML"),
+    sliderInput("interaction_index1", label = "interaction_index1 - k",
+                min = 0, max = 100,
+                value = 20),
+    sliderInput("interaction_index2", label = "interaction_index2 - k",
+                min = 0, max = 100,
+                value = 10),
+  
+  # Set to custom time 
+  #timeInput("time_start", "Start", value = strptime("18:42:00", "%T")),
+  
+  #timeInput("time_slut", "Slut", value = strptime("18:43:00", "%T")),
+  
+  ),
+      # Main panel for displaying outputs ----
+    mainPanel(
+      # Output: plots ----
+      plotOutput(outputId = "samlet_plots"),
+      tableOutput("oversigt_tabel")
+    )
+  ),#tabpanel 1 slut
+  
+  tabPanel("Blomster og Bins bby", 
+           sidebarPanel(
+                h3("Blomster"),
+    sliderInput("Bins_antal", label = "Bins baby",
+                min = 1, max = 100,
+                value = 50),
+           ),
+    mainPanel(
+      # Output: plots ----
+      plotOutput(outputId = "bin_plot")
+      )
+    ),
+  
+  tabPanel("Info", "Lavet af en sej studiegruppe")
+
+  )#navbarpage 
+)
+
+server <- function(input, output) {
+  
+  output$samlet_plots <- renderPlot({
+    
+    cvp_gam <- bam(
+        CVP ~ s(qrs_rel_idx, bs = 'cc', k = input$qrs_rel_index) +
+            s(insp_rel_idx, bs = 'cc', k = input$insp_rel_index) +
+            ti(
+                qrs_rel_idx,
+                insp_rel_idx,
+                bs = c('cc', 'cc'),
+                k = c(input$interaction_index1, input$interaction_index2)
+            ) +
+            s(time_s_s),
+        method = input$method,
+        #rho = 0.95,
+        data = sliced_pt03,
+        nthreads = 16 # Number of (virtual) cores
+    )
+    gratia::draw(cvp_gam)
+  })# slutter renderPlot her
+  
+  output$oversigt_tabel <- renderTable({data.frame(name =c("Residualer i anden", "REML_score"), value=c(sum(cvp_gam$residuals^2), unname(cvp_gam$gcv.ubre[1])))
+    })
+
+  
+  output$bin_plot <- renderPlot({
+    x <- iris$Sepal.Length
+    bins = seq(min(x),max(x), length.out = input$Bins_antal +1)
+    hist(x,breaks = bins)
+  })
+  
+}
+shinyApp(ui = ui, server = server)
+# https://shiny.rstudio.com/articles/layout-guide.html
+# https://www.youtube.com/watch?v=PHdIivFAq7Q
+```
+
