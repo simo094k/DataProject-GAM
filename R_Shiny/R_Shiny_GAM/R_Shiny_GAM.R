@@ -76,16 +76,20 @@ ui <- fluidPage(theme = shinytheme("cerulean"),
                                     )
                            ),
                            
+                           tabPanel("Visualize GAM", 
+                                    visualize_GAM_UI('viz_gam')
+                           ),
+                           
                            tabPanel("Info", "Lavet af en sej studiegruppe")
                            
                 )#navbarpage 
 )
 
-server <- function(input, output) {
+server <- function(input, output, session) {
     
-    output$samlet_plots <- renderPlot({
-        
-        cvp_gam <- bam(
+    
+    cvp_gam <- reactive({
+        bam(
             CVP ~ s(qrs_rel_index, bs = 'cc', k = input$qrs_rel_index) +
                 s(insp_rel_index, bs = 'cc', k = input$insp_rel_index) +
                 ti(
@@ -99,8 +103,13 @@ server <- function(input, output) {
             #rho = 0.95,
             data = cvp_indexed,
             nthreads = 16 # Number of (virtual) cores
-        )
-        gratia::draw(cvp_gam)
+            )
+    })
+    
+    output$samlet_plots <- renderPlot({
+        
+        gratia::draw(cvp_gam())
+        
     })# slutter renderPlot her
     
     output$bin_plot <- renderPlot({
@@ -109,6 +118,8 @@ server <- function(input, output) {
         bins = seq(min(x),max(x), length.out = input$Bins_antal +1)
         hist(x,breaks = bins)
     })
+    
+    visualize_GAM_server('viz_gam', gam_obj = cvp_gam)
     
 }
 # Run the application 
