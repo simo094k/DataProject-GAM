@@ -1,0 +1,218 @@
+---
+title: "GAM for thoracotomy waveforms"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r message=FALSE, warning=FALSE}
+rm(list = ls()) # clearing workspace
+library(waveformtools)
+library(tidyverse)
+library(mgcv)
+library(hms)
+library(shiny)
+library(shinythemes)
+library(shinyTime)
+library(data.table)
+library(readr)
+library(dygraphs)
+library(dplyr)
+```
+
+
+```{r loading data}
+# path to folder containing patient files
+# patient_file <- "../Datasets/thoracotomy_waveforms/"
+```
+
+
+```{r creating functions}
+add_time <- function(data, ms_between_obs = 8, time_origin = "2021-09-03") {
+  #' adds a column containing time with increments of ms_between_obs
+  #' data:             a dataframe like structure
+  #' ms_between_obs:   the amount of milliseconds between each cycle
+  df <- tibble(data)
+  df$time_ms <- seq(0, nrow(df)*ms_between_obs-ms_between_obs, ms_between_obs)
+  df$time_s <- df$time_ms / 1000
+  return(df)
+}
+
+create_patient_closed <- function(filepath) {
+  #' creates a dataframe containing cvp and time in ms and s for open chest
+  #' filepath:        the path of the patient file
+  dataload <- readRDS(filepath, refhook = NULL)
+  patient <- data.frame(cvp = dataload$closed_chest$CVP) # extract cvp numbers from data
+  patient <- add_time(patient)
+  return(patient)
+}
+
+create_patient_open <- function(filepath) {
+  #' creates a dataframe containing cvp and time in ms and s for open chest
+  #' filepath:        the path of the patient file
+  dataload <- readRDS(filepath, refhook = NULL)
+  patient <- data.frame(cvp = dataload$open_chest$CVP) # extract cvp numbers from data
+  patient <- add_time(patient)
+  return(patient)
+}
+
+all_in_one_patient <- function(filepath = patient_file, period = 'closed', slice_start = 130, slice_end = 190){
+  #' Creates a dataframe containing all the good stuff for either the closed or open period
+  full_dataload <- readRDS(filepath, refhook = NULL)
+  if(period == 'closed'){
+    pt3_closed <- create_patient_closed(filepath)
+    qrs_ms_closed <- full_dataload$closed_chest$QRSmarker_ms
+    pt3_closed <- na.omit(gen_annotation_index(pt3_closed, qrs_ms_closed, 'time_ms', 'qrs')) 
+    pt3_closed <- na.omit(gen_annotation_index(pt3_closed, seq(0, nrow(pt3_closed)*8, 5000), 'time_ms', 'insp'))
+    pt3_closed_sliced <- pt3_closed[pt3_closed$time_s > slice_start & pt3_closed$time_s < slice_end,]
+    return(pt3_closed_sliced)
+  }
+  else if(period == 'open'){
+    pt3_open <- create_patient_open(filepath)
+    qrs_ms_open <- full_dataload$open_chest$QRSmarker_ms
+    pt3_open <- na.omit(gen_annotation_index(pt3_open, qrs_ms_open, 'time_ms', 'qrs')) 
+    pt3_open <- na.omit(gen_annotation_index(pt3_open, seq(0, nrow(pt3_open)*8, 5000), 'time_ms', 'insp'))
+    pt3_open_sliced <- pt3_open[pt3_open$time_s > slice_start & pt3_open$time_s < slice_end,]
+    return(pt3_open_sliced)
+  }
+}
+```
+
+```{r Creating closed and open patient dataframes}
+#pt_closed_sliced <- all_in_one_patient(period = 'closed')
+#pt_open_sliced <- all_in_one_patient(period = 'open')
+```
+
+
+Gam-modelling
+
+```{r generating GAM object}
+# cvp_gam_closed <- bam(
+#         cvp ~ s(qrs_rel_index, bs = 'cc', k = 50) +
+#             s(insp_rel_index, bs = 'cc', k = 30) +
+#             ti(
+#                 qrs_rel_index,
+#                 insp_rel_index,
+#                 bs = c('cc', 'cc'),
+#                 k = c(20, 10)
+#             ) +
+#             s(time_s),
+#         method = 'REML',
+#         data = pt_closed_sliced,
+#         nthreads = 16 # Number of (virtual) cores
+#     )
+# cvp_gam_open <- bam(
+#         cvp ~ s(qrs_rel_index, bs = 'cc', k = 50) +
+#             s(insp_rel_index, bs = 'cc', k = 30) +
+#             ti(
+#                 qrs_rel_index,
+#                 insp_rel_index,
+#                 bs = c('cc', 'cc'),
+#                 k = c(20, 10)
+#             ) +
+#             s(time_s),
+#         method = 'REML',
+#         data = pt_open_sliced,
+#         nthreads = 16 # Number of (virtual) cores
+#     )
+```
+
+
+Visualise GAM
+
+```{r visualising gam object, fig.width = 10, fig.height = 7, out.width="100%"}
+gratia::draw(cvp_gam_closed)
+gratia::draw(cvp_gam_open)
+```
+
+
+Mads' Shiny. Work in progress.
+
+
+```{r shiny app}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+
+patient_list <- paste('pt', str_pad(seq(1,61), 2, pad = "0"), sep = "")
+
+ui <- fluidPage(theme = shinytheme("sandstone"),
+  navbarPage("GAM on heart-lung interaction during thoractomy", # Page header
+    
+    # First page begins
+    tabPanel("Main page",
+        
+        # Parameters
+        sidebarPanel(h3("Inputs"),
+                     selectInput("patient", label = "Select patient", 
+                                 choices = list(patient_list = patient_list),  selected = "pt01"),
+                     selectInput("option_chest", label = "Open or closed chest",
+                                 choices = list("Open" = "open", "Closed" = "closed"),  selected = "open"),
+                     selectInput("method", label = "GAM method",
+                                 choices = list("REML" = "REML", "P-REML" = "P-REML", "ML" = "ML",
+                                                "P-ML" = "P-ML",  "fREML"="fREML"), selected = "REML"),
+                     checkboxInput("somevalue", "Some value", FALSE),
+                     sliderInput("qrs_rel_index", label = "Number of basis functions in QRS term",
+                                 min = 0, max = 100, value = 50),
+                     sliderInput("insp_rel_index", label = "Number of basis functions in inspiration term",
+                                 min = 0, max = 100, value = 30),
+                     sliderInput("interaction_index1", label = "Number of basis functions for QRS in interaction term",
+                                 min = 0, max = 100, value = 20),
+                     sliderInput("interaction_index2", label = "Number of basis functions for inspiration in interaction term",
+                                 min = 0, max = 100, value = 10),
+                     ),
+          
+        # Main panel for displaying outputs
+        mainPanel(plotOutput(outputId = "samlet_plots"), tableOutput("oversigt_tabel"))
+    ), 
+  
+    # Second page begins
+    tabPanel("Bins sample plot",
+        
+        # Parameters
+        sidebarPanel(h3("Inputs"), sliderInput("Bins_antal",label = "Number of bins", min = 1, max = 100, value = 50),),
+        
+        # Main panel for displaying outputs
+        mainPanel(plotOutput(outputId = "bin_plot"))
+        ),
+    
+    # Third page begins
+    tabPanel("Info", "Created by Andreas, Casper, Mads & Simon")
+  )
+)
+
+server <- function(input, output) {
+  
+  output$samlet_plots <- renderPlot({
+    
+    cvp_gam <- bam(
+        cvp ~ s(qrs_rel_index, bs = 'cc', k = input$qrs_rel_index) +
+            s(insp_rel_index, bs = 'cc', k = input$insp_rel_index) +
+            ti(qrs_rel_index,
+               insp_rel_index,
+               bs = c('cc', 'cc'),
+               k = c(input$interaction_index1, input$interaction_index2)) +
+            s(time_s),
+        method = input$method,
+        #rho = 0.95,
+        data = pt_data(),
+        nthreads = 16 # Number of (virtual) cores
+    )
+    gratia::draw(cvp_gam)
+  })# slutter renderPlot her
+  
+
+  output$bin_plot <- renderPlot({
+    x <- iris$Sepal.Length
+    bins = seq(min(x),max(x), length.out = input$Bins_antal +1)
+    hist(x,breaks = bins)
+  })
+  patient_path <- reactive({filepath <- paste("../Datasets/thoracotomy_waveforms/", input$patient, ".RDS",sep="") })
+  pt_data <- reactive({all_in_one_patient(filepath = patient_path(), period = input$option_chest)})
+}
+shinyApp(ui = ui, server = server)
+# https://shiny.rstudio.com/articles/layout-guide.html
+# https://www.youtube.com/watch?v=PHdIivFAq7Q
+```
+
