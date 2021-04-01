@@ -1,0 +1,168 @@
+---
+title: "Visualization"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(waveformtools)
+library(tidyverse)
+library(mgcv)
+library(hms)
+library(shiny)
+library(shinythemes)
+library(shinyTime)
+library(data.table)
+library(readr)
+library(dygraphs)
+library(dplyr)
+library(tseries)
+library(mgcViz)
+```
+
+## Load dataset
+
+```{r}
+filepath <- "../Datasets/thoracotomy_waveforms/pt18.RDS"
+full_dataload <- readRDS(filepath, refhook = NULL)
+```
+
+```{r}
+add_time <- function(data, ms_between_obs = 8, time_origin = "2021-09-03") {
+  #' adds a column containing time with increments of ms_between_obs
+  #' data:             a dataframe like structure
+  #' ms_between_obs:   the amount of milliseconds between each cycle
+  df <- tibble(data)
+  df$time_ms <- seq(0, nrow(df)*ms_between_obs-ms_between_obs, ms_between_obs)
+  df$time_s <- df$time_ms / 1000
+  return(df)
+}
+
+create_patient <- function(filepath) {
+  #' creates a dataframe containing cvp and time in ms and s for open chest
+  #' filepath:        the path of the patient file
+  dataload <- readRDS(filepath, refhook = NULL)
+  patient <- data.frame(open_chest_cvp = dataload$open_chest$CVP) # extract cvp numbers from data
+  patient <- add_time(patient)
+  return(patient)
+}
+```
+
+```{r}
+pt18 <- create_patient(filepath)
+qrs_ms <- full_dataload$open_chest$QRSmarker_ms
+
+# The following code is to give an index to each measurement for which position it has in its heartbeat 
+# cycle. Also removes rows containing NAs giving only rows where we know start and end of cycle
+pt18 <- na.omit(gen_annotation_index(pt18, qrs_ms, 'time_ms', 'qrs')) 
+pt18 <- na.omit(gen_annotation_index(pt18, seq(0, nrow(pt3)*8, 5000), 'time_ms', 'insp'))
+```
+
+### Inspect data
+
+```{r inspecting cvp over time}
+dygraph(data = pt18[,c("time_s","open_chest_cvp")])
+```
+
+
+```{r slicing data}
+pt18_sliced <- pt18[pt18$time_s > 200 & pt18$time_s < 300,]
+```
+
+### Create gam object
+
+```{r}
+cvp_gam <- bam(
+        open_chest_cvp ~ s(qrs_rel_index, bs = 'cc', k = 50) +
+            s(insp_rel_index, bs = 'cc', k = 30) +
+            ti(
+                qrs_rel_index,
+                insp_rel_index,
+                bs = c('cc', 'cc'),
+                k = c(20, 10)
+            ) +
+            s(time_s),
+        method = 'REML',
+        data = pt18_sliced,
+        rho = 0.9,
+        nthreads = 16 # Number of (virtual) cores
+    )
+```
+
+### Create visualization object
+
+```{r}
+b <- getViz(cvp_gam)
+```
+
+
+### Conditional Probability for individual effects
+
+Plot of position in qrs-cycle's smooth effect on cvp. Added is a layer of the conditional probabilty of the residuals given the x-values.
+
+```{r}
+plot(b, select = 1) + l_dens(type = "cond") + l_fitLine() + l_ciLine()
+```
+
+From this it can be seen that the estimate of the effect of the position in qrs-cycle often has a high precision in terms of conditional probabilty. 
+
+Plot of position in insp-cycle's smooth effect on cvp. Added is a layer of the conditional probabilty of the residuals given the x-values.
+
+```{r}
+plot(b, select = 2) + l_dens(type = "cond") + l_fitLine() + l_ciLine()
+```
+
+Here, we can see that the estimate of the effect of the position in the inspiration-cycle is often close to zero with a high probability. This means that for this patient, when the chest is opened, the inspiration-cycle does not have a significant effect on the cvp.
+
+### Plot of interactions-term
+
+
+```{r}
+plotRGL(sm(b, 3), fix = c("z" = 0), residuals = TRUE)
+```
+
+### Gam check
+
+```{r}
+gam.check(cvp_gam)
+```
+
+Consider doing a trim based on qq-plot and histogram.
+
+```{r}
+qq.gam(cvp_gam)
+```
+
+```{r}
+cvp_gam_aftercheck <- bam(
+        open_chest_cvp ~ s(qrs_rel_index, bs = 'cc', k = 50) +
+            s(insp_rel_index, bs = 'cc', k = 30) +
+            ti(
+                qrs_rel_index,
+                insp_rel_index,
+                bs = c('cc', 'cc'),
+                k = c(30, 20)
+            ) +
+            s(time_s),
+        method = 'REML',
+        data = pt18_sliced,
+        rho = 0.9,
+        nthreads = 16 # Number of (virtual) cores
+    )
+```
+
+```{r}
+gratia::draw(cvp_gam_aftercheck)
+```
+
+```{r}
+c <- getViz(cvp_gam_aftercheck)
+plot(c, allTerms = T)
+```
+
+
+
+```{r}
+plotRGL(sm(c, 3), fix = c("z" = 0), residuals = TRUE)
+```
+
