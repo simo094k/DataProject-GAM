@@ -1,0 +1,127 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(waveformtools)
+library(tidyverse)
+library(mgcv)
+library(hms)
+library(shiny)
+library(shinythemes)
+library(shinyTime)
+library(data.table)
+library(readr)
+library(dygraphs)
+library(dplyr)
+library(tseries)
+
+setwd("C:/Users/caspe/OneDrive - Aarhus Universitet/Dokumenter/Dataprojekt/Projekt/git_simon/DataProject-GAM/R")
+```
+
+## Load dataset
+
+```{r}
+filepath <- "../Datasets/thoracotomy_waveforms/pt18.RDS"
+full_dataload <- readRDS(filepath, refhook = NULL)
+```
+
+```{r}
+add_time <- function(data, ms_between_obs = 8, time_origin = "2021-09-03") {
+  #' adds a column containing time with increments of ms_between_obs
+  #' data:             a dataframe like structure
+  #' ms_between_obs:   the amount of milliseconds between each cycle
+  df <- tibble(data)
+  df$time_ms <- seq(0, nrow(df)*ms_between_obs-ms_between_obs, ms_between_obs)
+  df$time_s <- df$time_ms / 1000
+  return(df)
+}
+
+create_patient <- function(filepath) {
+  #' creates a dataframe containing cvp and time in ms and s for open chest
+  #' filepath:        the path of the patient file
+  dataload <- readRDS(filepath, refhook = NULL)
+  patient <- data.frame(open_chest_cvp = dataload$open_chest$CVP) # extract cvp numbers from data
+  patient <- add_time(patient)
+  return(patient)
+}
+```
+
+```{r}
+pt18 <- create_patient(filepath)
+qrs_ms <- full_dataload$open_chest$QRSmarker_ms
+
+# The following code is to give an index to each measurement for which position it has in its heartbeat 
+# cycle. Also removes rows containing NAs giving only rows where we know start and end of cycle
+pt18 <- na.omit(gen_annotation_index(pt18, qrs_ms, 'time_ms', 'qrs')) 
+pt18 <- na.omit(gen_annotation_index(pt18, seq(0, nrow(pt3)*8, 5000), 'time_ms', 'insp'))
+```
+
+
+### Test for unit root (Augmented Dickey Fuller)
+
+We use the augmented Dickey Fuller test to check the order of integration (AR_). If it is above zero, we are dealing with a time series which isn't weakly dependent nor stationary.
+
+```{r}
+adf.test(pt18$open_chest_cvp)
+```
+
+We cannot reject AR41. This points towards heavy autocorrelation in our time series. To visually support this claim we plot the autocorrelations:
+
+```{r}
+acf(pt18$open_chest_cvp)
+```
+
+Again heavy autocorrelation. At lags up to 45 we have autocorrelation. This is expected of our time series, because CVP is usually a stable value that varies inside a fine interval ([8,12]). If the CVP is increasing at one observation, it is expected to increase at the next observation as well. Therefore, the heavy autocorrelation is expected.
+
+Inspect data to find stable period of measurements:
+
+```{r inspecting cvp over time}
+dygraph(data = pt18[,c("time_s","open_chest_cvp")])
+```
+
+Stable period (130 - 190): 
+
+```{r slicing data}
+pt18_sliced <- pt18[pt18$time_s > 200 & pt18$time_s < 300,]
+```
+
+We try to add a rho-term to our bam-modelling to account for this autocorrelation. We expect this to reduce the complexity and the wiggliness of our smooth effects - on the other hand we could lose some confidence in our estimates.
+
+```{r}
+cvp_gam <- bam(
+        open_chest_cvp ~ s(qrs_rel_index, bs = 'cc', k = 50) +
+            s(insp_rel_index, bs = 'cc', k = 30) +
+            ti(
+                qrs_rel_index,
+                insp_rel_index,
+                bs = c('cc', 'cc'),
+                k = c(20, 10)
+            ) +
+            s(time_s),
+        method = 'REML',
+        data = pt18_sliced,
+        rho = 0.9,
+        nthreads = 16 # Number of (virtual) cores
+    )
+```
+
+Visualize:
+
+```{r visualising gam object, fig.width = 10, fig.height = 7, out.width="100%"}
+gratia::draw(cvp_gam)
+```
+
+### Testing for heteroskedasticity:
+
+Now we will test for heteroscedasticity. This means that the variance of our cvp measurements changes depending on our explanatory variables.
+
+```{r}
+model <- lm(data=pt18, formula=closed_chest_cvp ~ time_ms+ insp_rel_index*qrs_rel_index)
+#summary(model)
+car::ncvTest(model)
+```
+
+We find that our p-value is very low meaning that the possibility of heteroscedasticity is very low. We therefore don't find the need to account for heteroscedasticity in our gam.
