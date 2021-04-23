@@ -31,7 +31,7 @@ setwd("C:/Users/caspe/OneDrive - Aarhus Universitet/Dokumenter/Dataprojekt/Proje
 
 ```{r}
 rm(list = ls())
-filepath <- "../Datasets/thoracotomy_waveforms/pt03.RDS"
+filepath <- "../Datasets/thoracotomy_waveforms/pt11.RDS"
 full_dataload <- readRDS(filepath, refhook = NULL)
 resp_data <- readRDS("../Datasets/thoracotomy_waveforms/comb_ventilation_data.RDS")
 ```
@@ -144,7 +144,7 @@ Stable period (130 - 190):
 
 
 ```{r slicing data}
-pt_sliced <- all_in_one_patient(filepath=filepath, period="open", slice_start=0,slice_end=48)
+pt_sliced <- all_in_one_patient(filepath=filepath, period="open", slice_start=154,slice_end=200)
 
 #pt_sliced <- pt[pt$time_s > 520  & pt$time_s < 595,] 
 ```
@@ -179,7 +179,7 @@ gratia::draw(cvp_gam)
 ### For saving GAM-object as RDS
 
 ```{r}
-saveRDS(cvp_gam, "pt03OPEN.rds")
+saveRDS(cvp_gam, "pt11OPEN.rds")
 ```
 
 
