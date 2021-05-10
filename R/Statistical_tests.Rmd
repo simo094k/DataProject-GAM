@@ -56,7 +56,7 @@ qrs_ms <- full_dataload$open_chest$QRSmarker_ms
 # The following code is to give an index to each measurement for which position it has in its heartbeat 
 # cycle. Also removes rows containing NAs giving only rows where we know start and end of cycle
 pt18 <- na.omit(gen_annotation_index(pt18, qrs_ms, 'time_ms', 'qrs')) 
-pt18 <- na.omit(gen_annotation_index(pt18, seq(0, nrow(pt3)*8, 5000), 'time_ms', 'insp'))
+pt18 <- na.omit(gen_annotation_index(pt18, seq(0, nrow(pt18)*8, 5000), 'time_ms', 'insp'))
 ```
 
 
@@ -103,7 +103,7 @@ cvp_gam <- bam(
             s(time_s),
         method = 'REML',
         data = pt18_sliced,
-        rho = 0.9,
+        rho = 0.95,
         nthreads = 16 # Number of (virtual) cores
     )
 ```
@@ -113,6 +113,23 @@ Visualize:
 ```{r visualising gam object, fig.width = 10, fig.height = 7, out.width="100%"}
 gratia::draw(cvp_gam)
 ```
+
+### Using BIC to validate our model.
+
+Compared with linear model (note it is obviously not a linear relation, so intuitively a bad value for the linear model). Lower BIC indicates less loss of information.
+
+```{r}
+lm1 <- lm(open_chest_cvp ~ qrs_rel_index * insp_rel_index + time_s, data = pt18_sliced)
+
+BIC(cvp_gam, lm1)
+```
+
+```{r}
+nlm1 <- lm(open_chest_cvp ~ poly(qrs_rel_index, 12) + poly(insp_rel_index, 8) + poly(time_s, 3), data = pt18_sliced)
+
+BIC(nlm1)
+```
+
 
 ### Testing for heteroskedasticity:
 
@@ -125,3 +142,50 @@ car::ncvTest(model)
 ```
 
 We find that our p-value is very low meaning that the possibility of heteroscedasticity is very low. We therefore don't find the need to account for heteroscedasticity in our gam.
+
+
+### Cross validation
+
+```{r}
+mses <- data.frame() #Create empty df to store CV squared error values
+scores <- data.frame() #Create empty df to store CV R2 values
+set.seed(42) #Set seed for reproducibility
+k <- 10 #Define number of folds
+for (i in 1:k) {
+  # Create weighting column
+  pt18_sliced$weight <- sample(c(0,1),size=nrow(pt18_sliced),replace=TRUE,prob=c(0.2,0.8)) #0 Indicates testing sample, 1 training sample
+  
+  #Generate training dataset
+  trainingdata <- pt18_sliced[pt18_sliced$weight == 1, ] #Select test data by weight  
+
+  #Generate test dataset
+  testdata <- pt18_sliced[pt18_sliced$weight == 0, ] #Select test data by weight
+  
+  #Run GAM with MRF
+  #ctrl <- gam.control(nthreads = 6) #Set controls
+  m <- bam(
+        open_chest_cvp ~ s(qrs_rel_index, bs = 'cc', k = 50) +
+            s(insp_rel_index, bs = 'cc', k = 30) +
+            ti(
+                qrs_rel_index,
+                insp_rel_index,
+                bs = c('cc', 'cc'),
+                k = c(20, 10)
+            ) +
+            s(time_s),
+        method = 'REML',
+        data = trainingdata,
+        rho = 0.95,
+        nthreads = 16 # Number of (virtual) cores
+    )
+  
+  #Predict test data
+  pred <- predict(m,newdata=testdata)
+  #Extract MSES
+  mses[i,1] <- mean((pt18_sliced$open_chest_cvp[pt18_sliced$weight==0] - pred)^2)
+  scores[i,1] <- summary(m)$r.sq
+}
+av.mse.GMRF <- mean(mses$V1)
+av.r2.GMRF <- mean(scores$V1)
+```
+
