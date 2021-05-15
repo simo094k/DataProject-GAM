@@ -1,9 +1,13 @@
 ---
-title: "GAM for thoracotomy waveforms"
+title: "Få RDS ind som plots"
+author: "Mads Varisbøl Clausen"
+date: "4/21/2021"
 output: html_document
-editor_options: 
-  chunk_output_type: console
 ---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
 ```{r message=FALSE, warning=FALSE}
 rm(list = ls()) # clearing workspace
@@ -18,16 +22,34 @@ library(data.table)
 library(readr)
 library(dygraphs)
 library(dplyr)
+library(cowplot)
 ```
+
+
+
+```{r}
+filepath <- "../GAM_RDS/pt07CLOSED.rds"
+full_dataload <- readRDS(filepath, refhook = NULL)
+```
+
+
+```{r}
+gratia::draw(full_dataload)
+```
+
+
+
+```{r}
+paste("pt07", "CLOSED.rds", sep = "")
+```
+
+
+
 
 
 ```{r loading data}
 # path to folder containing patient files
-# patient_file <- "../Datasets/thoracotomy_waveforms/"
-```
-
-```{r}
-casper <- readRDS("/Users/madsclausen/Desktop/Datavidenskab/4. Semester/Dataprojekt/DataProject-GAM/Datasets/thoracotomy_waveforms/pt29.RDS")
+ patient_file <- "../Datasets/thoracotomy_waveforms/"
 ```
 
 
@@ -83,8 +105,8 @@ all_in_one_patient <- function(filepath = patient_file, period = 'closed', slice
 ```
 
 ```{r Creating closed and open patient dataframes}
-#pt_closed_sliced <- all_in_one_patient(period = 'closed')
-#pt_open_sliced <- all_in_one_patient(period = 'open')
+pt_closed_sliced <- all_in_one_patient(period = 'closed')
+pt_open_sliced <- all_in_one_patient(period = 'open')
 ```
 
 
@@ -105,20 +127,20 @@ Gam-modelling
 #         data = pt_closed_sliced,
 #         nthreads = 16 # Number of (virtual) cores
 #     )
-# cvp_gam_open <- bam(
-#         cvp ~ s(qrs_rel_index, bs = 'cc', k = 50) +
-#             s(insp_rel_index, bs = 'cc', k = 30) +
-#             ti(
-#                 qrs_rel_index,
-#                 insp_rel_index,
-#                 bs = c('cc', 'cc'),
-#                 k = c(20, 10)
-#             ) +
-#             s(time_s),
-#         method = 'REML',
-#         data = pt_open_sliced,
-#         nthreads = 16 # Number of (virtual) cores
-#     )
+ cvp_gam_open <- bam(
+         cvp ~ s(qrs_rel_index, bs = 'cc', k = 50) +
+             s(insp_rel_index, bs = 'cc', k = 30) +
+             ti(
+                 qrs_rel_index,
+                 insp_rel_index,
+                 bs = c('cc', 'cc'),
+                 k = c(20, 10)
+             ) +
+             s(time_s),
+         method = 'REML',
+         data = pt_open_sliced,
+         nthreads = 16 # Number of (virtual) cores
+     )
 ```
 
 
@@ -130,7 +152,7 @@ gratia::draw(cvp_gam_open)
 ```
 
 
-Mads' Shiny. Work in progress.
+Mads' Shiny. Work in  progress.
 
 
 ```{r shiny app}
@@ -182,7 +204,11 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
         ),
     
     # Third page begins
-    tabPanel("Info", "Created by Andreas, Casper, Mads & Simon")
+    tabPanel("Info", "Created by Andreas, Casper, Mads & Simon"),
+    
+    
+    tabPanel("QRS og INSP",
+             mainPanel(plotOutput(outputId = "qrs_plot"), plotOutput(outputId = "insp_plot") ))
   )
 )
 
@@ -209,17 +235,181 @@ server <- function(input, output) {
    })# slutter renderPlot her
   
 
+   
+  ## Til tabpanel 2 
+   
   output$bin_plot <- renderPlot({
     x <- iris$Sepal.Length
     bins = seq(min(x),max(x), length.out = input$Bins_antal +1)
     hist(x,breaks = bins)
   })
   
-  patient_path <- reactive({filepath <- paste("../Datasets/thoracotomy_waveforms/", input$patient, ".RDS",sep="") })
-  pt_data <- reactive({all_in_one_patient(filepath = patient_path(), period = input$option_chest)})
+  
+  ## Til tabpanel 4
+  # Til at indlæse rds-filerne
+  patient_path_open <- reactive({paste("../GAM_RDS/", input$patient, "OPEN.rds",sep="") })
+  pt_data_open <- reactive({ readRDS(patient_path_open(), refhook = NULL) })
+  
+  patient_path_closed <- reactive({paste("../GAM_RDS/", input$patient, "CLOSED.rds",sep="") })
+  pt_data_closed <- reactive({ readRDS(patient_path_closed(), refhook = NULL) })
+  
+  
+  ### prøver qrs:
+  output$qrs_plot <- renderPlot({
+  ggplot() +
+  geom_line(data=gratia::evaluate_smooth(pt_data_open(), 's(qrs_rel_index)'),
+            aes(qrs_rel_index,est, colour="open")) +
+  geom_line(data=gratia::evaluate_smooth(pt_data_closed(), 's(qrs_rel_index)'),
+            aes(qrs_rel_index,est, colour="closed")) +
+  scale_color_manual(values = c(
+    'open' = 'darkblue',
+    'closed' = 'red')) +
+  labs(color = 'Status') +
+      ggtitle("QRS")
+  })
+  
+  ### prøver insp:
+  output$insp_plot <- renderPlot({
+  ggplot() +
+  geom_line(data=gratia::evaluate_smooth(pt_data_open(), 's(insp_rel_index)'),
+            aes(insp_rel_index,est, colour="open")) +
+  geom_line(data=gratia::evaluate_smooth(pt_data_closed(), 's(insp_rel_index)'),
+            aes(insp_rel_index,est, colour="closed")) +
+  scale_color_manual(values = c(
+    'open' = 'darkblue',
+    'closed' = 'red')) +
+  labs(color = 'Status') +
+      ggtitle("INSP")
+  })
+  
+  
+  
+  
 }
 shinyApp(ui = ui, server = server)
 # https://shiny.rstudio.com/articles/layout-guide.html
 # https://www.youtube.com/watch?v=PHdIivFAq7Q
 ```
+
+
+
+
+
+
+```{r}
+filepath <- "../GAM_RDS/pt09OPEN.rds"
+full_dataload <- readRDS(filepath, refhook = NULL)
+
+filepath <- "../GAM_RDS/pt09CLOSED.rds"
+full_dataloadclosed <- readRDS(filepath, refhook = NULL)
+
+```
+
+```{r}
+gratia::draw(full_dataload)
+gratia::draw(full_dataloadclosed)
+
+```
+
+```{r qrs_rel_index}
+data_qrs_open <- gratia::evaluate_smooth(full_dataload, 's(qrs_rel_index)')
+data_qrs_closed <- gratia::evaluate_smooth(full_dataloadclosed, 's(qrs_rel_index)')
+```
+
+```{r insp_rel_index}
+data_insp_open <- gratia::evaluate_smooth(full_dataload, 's(insp_rel_index)')
+data_insp_closed <- gratia::evaluate_smooth(full_dataloadclosed, 's(insp_rel_index)')
+```
+
+```{r time_s}
+#data_time_open <- gratia::evaluate_smooth(full_dataload, 's(time_s)')
+#data_time_closed <- gratia::evaluate_smooth(full_dataloadclosed, 's(time_s)')
+```
+
+
+```{r individuelle plot}
+# ggplot(data = data_qrs_open, aes(qrs_rel_index, est)) +
+#   geom_line()
+# 
+# ggplot(data_insp_open, aes(insp_rel_index, est)) +
+#   geom_line()
+```
+
+
+```{r samlet plot qrs}
+aa <- ggplot() +
+  geom_line(data=data_qrs_open, aes(qrs_rel_index,est, colour="open")) +
+  geom_line(data=data_qrs_closed, aes(qrs_rel_index,est, colour="closed")) +
+  scale_color_manual(values = c(
+    'open' = 'darkblue',
+    'closed' = 'red')) +
+  labs(color = 'Status')
+```
+
+
+
+```{r samlet plot insp}
+tt <- ggplot() +
+  geom_line(data=data_insp_open, aes(insp_rel_index,est, colour="open")) +
+  geom_line(data=data_insp_closed, aes(insp_rel_index,est, colour="closed")) +
+  scale_color_manual(values = c(
+    'open' = 'darkblue',
+    'closed' = 'red')) +
+  labs(color = 'Status')
+```
+
+
+
+
+
+```{r}
+aa + tt
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+gratia::draw(full_dataload,       select = 1, rug= FALSE) 
+gratia::draw(full_dataloadclosed, select = 1, rug=F)
+```
+
+```{r}
+gen_predictions <- function(cvp_gam) {
+    if (is.null(cvp_gam)) return(NULL)
+    
+    #find max of insp_index smooth
+    insp_index_smooth <- gratia::evaluate_smooth(cvp_gam, 's(insp_index)')
+    insp_index_max <- insp_index_smooth$insp_index[which.max(insp_index_smooth$est)]
+    
+    structured_data <- expand_grid(insp_index = c(
+        # Generate predictions for 10 levels of inspiration between start and max inspiration
+        seq(0,insp_index_max, length.out = 10), 
+        # And 1 prediction 1 sec after max inspiration                                      
+        insp_index_max + c(1)),
+        # Generate 200 predictions uniformaly across the qrs_rel_index (to get a smooth line)
+        qrs_rel_index = seq(0,1, length.out = 200),
+        # Choose 'some' position for the trend smooth (or better, do not include it in the prediction)
+        time_s = 1)
+    
+    struct_pred <- predict(cvp_gam, newdata = structured_data, se.fit = TRUE) 
+    
+    mutate(structured_data, 
+           CVP = struct_pred$fit,
+           CVP_low = CVP - 1.96 * struct_pred$se.fit,
+           CVP_up = CVP + 1.96 * struct_pred$se.fit)
+}
+```
+
 

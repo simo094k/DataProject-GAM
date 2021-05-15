@@ -26,6 +26,15 @@ filepath <- "../Datasets/thoracotomy_waveforms_prelim/pt03.RDS"
 full_dataload <- readRDS(filepath, refhook = NULL)
 ```
 
+```{r nyt data}
+filepath_ny <- "../Datasets/thoracotomy_waveforms/pt03.RDS"
+full_dataload_ny <- readRDS(filepath, refhook = NULL)
+```
+
+```{r}
+full_dataload_ny$open_chest$CVP
+```
+
 
 ```{r creating functions}
 add_time <- function(data, ms_between_obs = 8, time_origin = "2021-09-03") {

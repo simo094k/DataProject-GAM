@@ -111,3 +111,31 @@ for(i in 1:length(intervaller_csv$time_s)){
 
 
 
+```{r}
+firstnr <- seq(1,9)
+new <- paste0("0", firstnr)
+second <- seq(10,61)
+combined_two <- c(new, second)
+combined_finished <- paste0("pt", combined_two)
+
+
+selectInput("method", label = "Method:", 
+choices = list(combined_finished = combined_finished),  selected = "pt01")
+
+
+filepath <- paste("../Datasets/thoracotomy_waveforms/", input$method, ".RDS",sep="") 
+```
+
+
+
+
+
+
+```{r}
+selectInput("option_chest", label = "Open or closed:", 
+choices = list("open" = "open", "closed" = "closed"),  selected = "open")
+
+
+```
+
+
