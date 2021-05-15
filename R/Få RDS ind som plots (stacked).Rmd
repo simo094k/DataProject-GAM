@@ -163,6 +163,38 @@ knitr::opts_chunk$set(
 
 patient_list <- paste('pt', str_pad(seq(1,61), 2, pad = "0"), sep = "")
 
+give_it_center <- function(data_set, center = 50){
+  
+  if (which.max(data_set$est) > center ){
+    biggest <- which.max(data_set$est)
+    
+    value_to_subtract <- data_set$insp_rel_index[biggest] - data_set$insp_rel_index[center]
+    
+    data_set$insp_rel_index <- data_set$insp_rel_index - value_to_subtract
+  
+    for (index in 1:length(data_set$insp_rel_index)) {
+      if (data_set$insp_rel_index[index] < 0 ){
+        data_set$insp_rel_index[index] <- data_set$insp_rel_index[index] +1
+      }
+    }
+  } else{
+    smallest <- which.max(data_set$est)
+    
+    value_to_add <- data_set$insp_rel_index[center] - data_set$insp_rel_index[smallest]
+    
+    data_set$insp_rel_index <- data_set$insp_rel_index + value_to_add
+  
+    for (index in 1:length(data_set$insp_rel_index)) {
+      if (data_set$insp_rel_index[index] > 1 ){
+        data_set$insp_rel_index[index] <- data_set$insp_rel_index[index] -1
+      }
+    }
+  }
+  return(data_set)
+}
+
+
+
 ui <- fluidPage(theme = shinytheme("sandstone"),
   navbarPage("GAM on heart-lung interaction during thoractomy", # Page header
     
@@ -208,8 +240,16 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
     
     
     tabPanel("QRS og INSP",
+             sidebarPanel(h3("Inputs"),
+                  sliderInput("center_open", label = "Highest point center open",
+                                 min = 0, max = 100, value = 50),
+                  sliderInput("center_closed", label = "Highest point center closed",
+                                 min = 0, max = 100, value = 50)
+             ),
              
-             mainPanel(plotOutput(outputId = "qrs_plot"), plotOutput(outputId = "insp_plot") ))
+             mainPanel(plotOutput(outputId = "qrs_plot"), plotOutput(outputId = "insp_plot") ),
+                 verbatimTextOutput("maksimum_closed")
+             )
   )
 )
 
@@ -273,19 +313,35 @@ server <- function(input, output) {
   ### prøver insp:
   output$insp_plot <- renderPlot({
   ggplot() +
-  geom_line(data=gratia::evaluate_smooth(pt_data_open(), 's(insp_rel_index)'),
+  geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_open(), 's(insp_rel_index)'),input$center_open),
             aes(insp_rel_index,est, colour="open")) +
-  geom_line(data=gratia::evaluate_smooth(pt_data_closed(), 's(insp_rel_index)'),
+  geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_closed(), 's(insp_rel_index)'),input$center_closed),
             aes(insp_rel_index,est, colour="closed")) +
   scale_color_manual(values = c(
     'open' = 'darkblue',
     'closed' = 'red')) +
   labs(color = 'Status') +
-      ggtitle("INSP")
+      ggtitle("INSP") +  ggplot() +
+  geom_line(data=gratia::evaluate_smooth(pt_data_open(), 's(qrs_rel_index)'),
+            aes(qrs_rel_index,est, colour="open")) +
+  geom_line(data=gratia::evaluate_smooth(pt_data_closed(), 's(qrs_rel_index)'),
+            aes(qrs_rel_index,est, colour="closed")) +
+  scale_color_manual(values = c(
+    'open' = 'darkblue',
+    'closed' = 'red')) +
+  labs(color = 'Status') +
+      ggtitle("QRS")
   })
   
   
+ # data_time_open <- reactive({ gratia::evaluate_smooth(pt_data_open(), 's(time_s)')})
+ data_time_closed <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 's(time_s)')})
   
+ # open_times <- round(c(min(data_time_open()$time_s) , max(data_time_open()$time_s), max(data_time_open()$time_s) - min(data_time_open()$time_s)),2)
+  
+  closed_times <- reactive({round(c(min(data_time_closed()$time_s) , max(data_time_closed()$time_s), max(data_time_closed()$time_s) - min(data_time_closed()$time_s)),2)})
+  
+  output$maksimum_closed <- renderText({ as.character(closed_times()[1]) })
   
 }
 shinyApp(ui = ui, server = server)
@@ -435,7 +491,6 @@ ggplot() +
 data_insp_open <- gratia::evaluate_smooth(full_dataload, 's(insp_rel_index)')
 data_insp_closed <- gratia::evaluate_smooth(full_dataloadclosed, 's(insp_rel_index)')
 
-
 if (which.max(data_insp_open$est) > 50 ){
   biggest <- which.max(data_insp_open$est)
   
@@ -545,3 +600,129 @@ gen_predictions <- function(cvp_gam) {
 
 
 https://stackoverflow.com/questions/27827962/r-shiny-bi-directional-reactive-widgets
+
+
+
+
+
+## highest point at center 0.5 - til andreas at bruge
+```{r fælles på midten}
+data_insp_open <- gratia::evaluate_smooth(full_dataload, 's(insp_rel_index)')
+data_insp_closed <- gratia::evaluate_smooth(full_dataloadclosed, 's(insp_rel_index)')
+
+give_it_center <- function(data_set, center = 50){
+  
+  if (which.max(data_set$est) > center ){
+    biggest <- which.max(data_set$est)
+    
+    value_to_subtract <- data_set$insp_rel_index[biggest] - data_set$insp_rel_index[center]
+    
+    data_set$insp_rel_index <- data_set$insp_rel_index - value_to_subtract
+  
+    for (index in 1:length(data_set$insp_rel_index)) {
+      if (data_set$insp_rel_index[index] < 0 ){
+        data_set$insp_rel_index[index] <- data_set$insp_rel_index[index] +1
+      }
+    }
+  } else{
+    smallest <- which.max(data_set$est)
+    
+    value_to_add <- data_set$insp_rel_index[center] - data_set$insp_rel_index[smallest]
+    
+    data_set$insp_rel_index <- data_set$insp_rel_index + value_to_add
+  
+    for (index in 1:length(data_set$insp_rel_index)) {
+      if (data_set$insp_rel_index[index] > 1 ){
+        data_set$insp_rel_index[index] <- data_set$insp_rel_index[index] -1
+      }
+    }
+  }
+  return(data_set)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+if (which.max(data_insp_closed$est) > 50 ){
+  biggest <- which.max(data_insp_closed$est)
+  
+  value_to_subtract <- data_insp_closed$insp_rel_index[biggest] - data_insp_closed$insp_rel_index[50]
+  
+  data_insp_closed$insp_rel_index <- data_insp_closed$insp_rel_index - value_to_subtract
+
+  for (index in 1:length(data_insp_closed$insp_rel_index)) {
+    if (data_insp_closed$insp_rel_index[index] < 0 ){
+      data_insp_closed$insp_rel_index[index] <- data_insp_closed$insp_rel_index[index] +1
+    }
+  }
+} else{
+  smallest <- which.max(data_insp_closed$est)
+  
+  value_to_add <- data_insp_closed$insp_rel_index[50] - data_insp_closed$insp_rel_index[smallest]
+  
+  data_insp_closed$insp_rel_index <- data_insp_closed$insp_rel_index + value_to_add
+
+  for (index in 1:length(data_insp_closed$insp_rel_index)) {
+    if (data_insp_closed$insp_rel_index[index] > 1 ){
+      data_insp_closed$insp_rel_index[index] <- data_insp_closed$insp_rel_index[index] -1
+    }
+  }
+}
+
+ggplot() +
+  geom_line(data=data_insp_open, aes(insp_rel_index,est, colour="open")) +
+  geom_line(data=data_insp_closed, aes(insp_rel_index,est, colour="closed")) +
+  scale_color_manual(values = c(
+    'open' = 'darkblue',
+    'closed' = 'red')) +
+  labs(color = 'Status')
+```
+
+
+
+```{r}
+aa<- give_it_center(data_insp_open)
+bb <- give_it_center(data_insp_closed)
+
+
+ggplot() +
+  geom_line(data=aa, aes(insp_rel_index,est, colour="open")) +
+  geom_line(data=bb, aes(insp_rel_index,est, colour="closed")) +
+  scale_color_manual(values = c(
+    'open' = 'darkblue',
+    'closed' = 'red')) +
+  labs(color = 'Status')
+```
+
+
+
+# Til at få tider på
+```{r}
+data_time_open <- gratia::evaluate_smooth(full_dataload, 's(time_s)')
+data_time_closed <- gratia::evaluate_smooth(full_dataloadclosed, 's(time_s)')
+```
+
+
+```{r}
+
+data_time_open <- gratia::evaluate_smooth(full_dataload, 's(time_s)')
+data_time_closed <- gratia::evaluate_smooth(full_dataloadclosed, 's(time_s)')
+
+open_times <- round(c(min(data_time_open$time_s) , max(data_time_open$time_s), max(data_time_open$time_s) - min(data_time_open$time_s)),2)
+
+closed_times <- round(c(min(data_time_closed$time_s) , max(data_time_closed$time_s), max(data_time_closed$time_s) - min(data_time_closed$time_s)),2)
+
+```
+
+
+
+

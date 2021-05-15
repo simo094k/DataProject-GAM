@@ -7,6 +7,7 @@ editor_options:
 
 ```{r message=FALSE, warning=FALSE}
 rm(list = ls()) # clearing workspace
+library(viridis)
 library(waveformtools)
 library(tidyverse)
 library(mgcv)
@@ -84,6 +85,37 @@ create_viz <- function(pred_both, patient_number){
     facet_wrap(~ indicator)
     return(viz)
 }
+
+
+give_it_center <- function(data_set, center = 50){
+  
+  if (which.max(data_set$est) > center ){
+    biggest <- which.max(data_set$est)
+    
+    value_to_subtract <- data_set$insp_rel_index[biggest] - data_set$insp_rel_index[center]
+    
+    data_set$insp_rel_index <- data_set$insp_rel_index - value_to_subtract
+  
+    for (index in 1:length(data_set$insp_rel_index)) {
+      if (data_set$insp_rel_index[index] < 0 ){
+        data_set$insp_rel_index[index] <- data_set$insp_rel_index[index] +1
+      }
+    }
+  } else{
+    smallest <- which.max(data_set$est)
+    
+    value_to_add <- data_set$insp_rel_index[center] - data_set$insp_rel_index[smallest]
+    
+    data_set$insp_rel_index <- data_set$insp_rel_index + value_to_add
+  
+    for (index in 1:length(data_set$insp_rel_index)) {
+      if (data_set$insp_rel_index[index] > 1 ){
+        data_set$insp_rel_index[index] <- data_set$insp_rel_index[index] -1
+      }
+    }
+  }
+  return(data_set)
+}
 ```
 
 
@@ -124,7 +156,21 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
         ),
     
     # Third page begins
-    tabPanel("Info", "Created by Andreas, Casper, Mads & Simon")
+    tabPanel("Info", "Created by Andreas, Casper, Mads & Simon"),
+    
+    # Fourth page begins
+    tabPanel("QRS og INSP",
+             sidebarPanel(h3("Inputs"),
+                  sliderInput("center_open", label = "Highest point center open",
+                                 min = 1, max = 100, value = 50),
+                  sliderInput("center_closed", label = "Highest point center closed",
+                                 min = 1, max = 100, value = 50)
+             ),
+             
+             mainPanel(plotOutput(outputId = "insp_plot")),
+                 verbatimTextOutput("maksimum_closed"),
+                  verbatimTextOutput("maksimum_open")
+             )
   )
 )
 
@@ -135,8 +181,7 @@ server <- function(input, output) {
   
   patient_path_closed <- reactive({paste("../GAM_RDS/", input$patient, "CLOSED.rds",sep="") })
   pt_data_closed <- reactive({ readRDS(patient_path_closed(), refhook = NULL) })
-  
-    
+
   
   output$samlet_plots <- renderPlot({
 #    pt <- list("ptopen" = pt_data_open(), "ptclosed" = pt_data_closed())
@@ -152,6 +197,45 @@ server <- function(input, output) {
   })
   patient_path <- reactive({filepath <- paste("../Datasets/thoracotomy_waveforms/", input$patient, ".RDS",sep="") })
   pt_data <- reactive({all_in_one_patient(filepath = patient_path(), period = input$option_chest)})
+  
+  
+  ## Til tabpanel 4
+  
+  ### Plotter insp og qrs:
+  output$insp_plot <- renderPlot({
+  ggplot() +
+  geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_open(), 's(insp_rel_index)'),input$center_open),
+            aes(insp_rel_index,est, colour="open")) +
+  geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_closed(), 's(insp_rel_index)'),input$center_closed),
+            aes(insp_rel_index,est, colour="closed")) +
+  scale_color_manual(values = c(
+    'open' = 'darkblue',
+    'closed' = 'red')) +
+  labs(color = 'Status') +
+      ggtitle("INSP") +  ggplot() +
+  geom_line(data=gratia::evaluate_smooth(pt_data_open(), 's(qrs_rel_index)'),
+            aes(qrs_rel_index,est, colour="open")) +
+  geom_line(data=gratia::evaluate_smooth(pt_data_closed(), 's(qrs_rel_index)'),
+            aes(qrs_rel_index,est, colour="closed")) +
+  scale_color_manual(values = c(
+    'open' = 'darkblue',
+    'closed' = 'red')) +
+  labs(color = 'Status') +
+      ggtitle("QRS")
+  })
+  
+  
+ data_time_open  <- reactive({ gratia::evaluate_smooth(pt_data_open(),   's(time_s)')})
+ data_time_closed <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 's(time_s)')})
+  
+ open_times <- reactive({round(c(min(data_time_open()$time_s) , max(data_time_open()$time_s), max(data_time_open()$time_s) - min(data_time_open()$time_s)),2)})
+  
+  closed_times <- reactive({round(c(min(data_time_closed()$time_s) , max(data_time_closed()$time_s), max(data_time_closed()$time_s) - min(data_time_closed()$time_s)),2)})
+  
+  output$maksimum_open <- renderText({ paste0("Open - Start: ", as.character(open_times()[1]), " Slut: ", as.character(open_times()[2]), " Diff: ", as.character(open_times()[3])) })
+  
+  output$maksimum_closed <- renderText({ paste0("CLOSED - Start: ", as.character(closed_times()[1]), " Slut: ", as.character(closed_times()[2]), " Diff: ", as.character(closed_times()[3])) })
+  
 }
 shinyApp(ui = ui, server = server)
 # https://shiny.rstudio.com/articles/layout-guide.html
