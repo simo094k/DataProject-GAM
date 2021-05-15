@@ -38,7 +38,7 @@ gen_predictions <- function(cvp_gam) {
 
     structured_data <- expand.grid(insp_rel_index = c(
         # Generate predictions for 10 levels of inspiration between start and max inspiration
-        seq(0, 1, length.out = 10)), #insp_rel_index_max, length.out = 10)), 
+        seq(0, 0.9, length.out = 10)), #insp_rel_index_max, length.out = 10)), 
         # And 1 prediction 1 sec after max inspiration                                      
         #insp_rel_index_max + c(1)), # uncommented for our use case
         # Generate 200 predictions uniformaly across the qrs_rel_index (to get a smooth line)
