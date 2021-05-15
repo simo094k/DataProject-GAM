@@ -16,7 +16,7 @@ library(viridis)
 ```
 
 ```{r select patient and load data}
-pt_range <- c(2,3) # insert the number of the patient you want to visualize
+pt_range <- c(2, 3, 4, 5, 7, 9, 10, 11, 12, 14, 15, 16, 17, 18, 21, 22, 23, 24, 28, 31, 32, 35, 37, 38, 41, 42, 44,45, 46, 47, 48, 51, 52, 53, 54, 55, 57, 58) #seq(1,61) # insert the number of the patient you want to visualize
 
 load_patient <- function(patient_number){
     # a function that loads GAMs in RDS file format using a specific nomenclature
@@ -44,9 +44,9 @@ gen_predictions <- function(cvp_gam) {
         # Generate 200 predictions uniformaly across the qrs_rel_index (to get a smooth line)
         qrs_rel_index = seq(0,1, length.out = 500),
         # Choose 'some' position for the trend smooth (or better, do not include it in the prediction)
-        time_s = 1)
+        time_s = 580)
     
-    struct_pred <- predict(cvp_gam, newdata = structured_data, se.fit = TRUE) 
+    struct_pred <- predict(cvp_gam, newdata = structured_data, se.fit = TRUE, exclude='s(time_s)') 
     
     mutate(structured_data, 
            CVP = struct_pred$fit,
@@ -56,7 +56,7 @@ gen_predictions <- function(cvp_gam) {
 
 
 create_patient_preds <- function(ptopen, ptclosed){
-    # a function that combines data from closed and open chest into one data frame
+    # a function that creates predictions and combines data from closed and open chest into one data frame 
     pred_open <- gen_predictions(ptopen)
     pred_closed <- gen_predictions(ptclosed)
     pred_both <- cbind(indicator=c(rep("open_chest", nrow(pred_open)),
