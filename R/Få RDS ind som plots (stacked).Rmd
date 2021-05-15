@@ -208,6 +208,7 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
     
     
     tabPanel("QRS og INSP",
+             
              mainPanel(plotOutput(outputId = "qrs_plot"), plotOutput(outputId = "insp_plot") ))
   )
 )
@@ -254,6 +255,7 @@ server <- function(input, output) {
   pt_data_closed <- reactive({ readRDS(patient_path_closed(), refhook = NULL) })
   
   
+  
   ### prøver qrs:
   output$qrs_plot <- renderPlot({
   ggplot() +
@@ -297,10 +299,10 @@ shinyApp(ui = ui, server = server)
 
 
 ```{r}
-filepath <- "../GAM_RDS/pt09OPEN.rds"
+filepath <- "../GAM_RDS/pt37OPEN.rds"
 full_dataload <- readRDS(filepath, refhook = NULL)
 
-filepath <- "../GAM_RDS/pt09CLOSED.rds"
+filepath <- "../GAM_RDS/pt37CLOSED.rds"
 full_dataloadclosed <- readRDS(filepath, refhook = NULL)
 
 ```
@@ -322,8 +324,8 @@ data_insp_closed <- gratia::evaluate_smooth(full_dataloadclosed, 's(insp_rel_ind
 ```
 
 ```{r time_s}
-#data_time_open <- gratia::evaluate_smooth(full_dataload, 's(time_s)')
-#data_time_closed <- gratia::evaluate_smooth(full_dataloadclosed, 's(time_s)')
+data_time_open <- gratia::evaluate_smooth(full_dataload, 's(time_s)')
+data_time_closed <- gratia::evaluate_smooth(full_dataloadclosed, 's(time_s)')
 ```
 
 
@@ -362,10 +364,138 @@ tt <- ggplot() +
 
 
 
+
+
+
+
+
 ```{r}
-aa + tt
+filepath <- "../GAM_RDS/pt10OPEN.rds"
+full_dataload <- readRDS(filepath, refhook = NULL)
+
+filepath <- "../GAM_RDS/pt10CLOSED.rds"
+full_dataloadclosed <- readRDS(filepath, refhook = NULL)
+
+data_insp_open <- gratia::evaluate_smooth(full_dataload, 's(insp_rel_index)')
+data_insp_closed <- gratia::evaluate_smooth(full_dataloadclosed, 's(insp_rel_index)')
 ```
 
+## highest point same place
+```{r samme sted}
+data_insp_open <- gratia::evaluate_smooth(full_dataload, 's(insp_rel_index)')
+data_insp_closed <- gratia::evaluate_smooth(full_dataloadclosed, 's(insp_rel_index)')
+
+
+if (which.max(data_insp_open$est) > which.max(data_insp_closed$est) ){
+  biggest <- which.max(data_insp_open$est)
+  smallest <- which.max(data_insp_closed$est)
+  
+  value_to_add <- data_insp_open$insp_rel_index[biggest] - data_insp_closed$insp_rel_index[smallest]
+  
+  data_insp_closed$insp_rel_index <- data_insp_closed$insp_rel_index + value_to_add
+
+  for (index in 1:length(data_insp_closed$insp_rel_index)) {
+    if (data_insp_closed$insp_rel_index[index] > 1 ){
+      data_insp_closed$insp_rel_index[index] <- data_insp_closed$insp_rel_index[index] -1
+    }
+  }
+} else{
+  biggest <- which.max(data_insp_closed$est)
+  smallest <- which.max(data_insp_open$est)
+  
+  value_to_add <- data_insp_closed$insp_rel_index[biggest] - data_insp_open$insp_rel_index[smallest]
+  
+  data_insp_open$insp_rel_index <- data_insp_open$insp_rel_index + value_to_add
+
+  for (index in 1:length(data_insp_open$insp_rel_index)) {
+    if (data_insp_open$insp_rel_index[index] > 1 ){
+      data_insp_open$insp_rel_index[index] <- data_insp_open$insp_rel_index[index] -1
+    }
+  }
+}
+
+ggplot() +
+  geom_line(data=data_insp_open, aes(insp_rel_index,est, colour="open")) +
+  geom_line(data=data_insp_closed, aes(insp_rel_index,est, colour="closed")) +
+  scale_color_manual(values = c(
+    'open' = 'darkblue',
+    'closed' = 'red')) +
+  labs(color = 'Status')
+```
+
+
+
+
+
+
+
+
+## highest point at center 0.5 - til andreas at bruge
+```{r fælles på midten}
+data_insp_open <- gratia::evaluate_smooth(full_dataload, 's(insp_rel_index)')
+data_insp_closed <- gratia::evaluate_smooth(full_dataloadclosed, 's(insp_rel_index)')
+
+
+if (which.max(data_insp_open$est) > 50 ){
+  biggest <- which.max(data_insp_open$est)
+  
+  value_to_subtract <- data_insp_open$insp_rel_index[biggest] - data_insp_open$insp_rel_index[50]
+  
+  data_insp_open$insp_rel_index <- data_insp_open$insp_rel_index - value_to_subtract
+
+  for (index in 1:length(data_insp_open$insp_rel_index)) {
+    if (data_insp_open$insp_rel_index[index] < 0 ){
+      data_insp_open$insp_rel_index[index] <- data_insp_open$insp_rel_index[index] +1
+    }
+  }
+} else{
+  smallest <- which.max(data_insp_open$est)
+  
+  value_to_add <- data_insp_open$insp_rel_index[50] - data_insp_open$insp_rel_index[smallest]
+  
+  data_insp_open$insp_rel_index <- data_insp_open$insp_rel_index + value_to_add
+
+  for (index in 1:length(data_insp_open$insp_rel_index)) {
+    if (data_insp_open$insp_rel_index[index] > 1 ){
+      data_insp_open$insp_rel_index[index] <- data_insp_open$insp_rel_index[index] -1
+    }
+  }
+}
+
+if (which.max(data_insp_closed$est) > 50 ){
+  biggest <- which.max(data_insp_closed$est)
+  
+  value_to_subtract <- data_insp_closed$insp_rel_index[biggest] - data_insp_closed$insp_rel_index[50]
+  
+  data_insp_closed$insp_rel_index <- data_insp_closed$insp_rel_index - value_to_subtract
+
+  for (index in 1:length(data_insp_closed$insp_rel_index)) {
+    if (data_insp_closed$insp_rel_index[index] < 0 ){
+      data_insp_closed$insp_rel_index[index] <- data_insp_closed$insp_rel_index[index] +1
+    }
+  }
+} else{
+  smallest <- which.max(data_insp_closed$est)
+  
+  value_to_add <- data_insp_closed$insp_rel_index[50] - data_insp_closed$insp_rel_index[smallest]
+  
+  data_insp_closed$insp_rel_index <- data_insp_closed$insp_rel_index + value_to_add
+
+  for (index in 1:length(data_insp_closed$insp_rel_index)) {
+    if (data_insp_closed$insp_rel_index[index] > 1 ){
+      data_insp_closed$insp_rel_index[index] <- data_insp_closed$insp_rel_index[index] -1
+    }
+  }
+}
+
+ggplot() +
+  geom_line(data=data_insp_open, aes(insp_rel_index,est, colour="open")) +
+  geom_line(data=data_insp_closed, aes(insp_rel_index,est, colour="closed")) +
+  scale_color_manual(values = c(
+    'open' = 'darkblue',
+    'closed' = 'red')) +
+  labs(color = 'Status')
+```
 
 
 
@@ -413,3 +543,5 @@ gen_predictions <- function(cvp_gam) {
 ```
 
 
+
+https://stackoverflow.com/questions/27827962/r-shiny-bi-directional-reactive-widgets
