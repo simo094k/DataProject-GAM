@@ -20,10 +20,6 @@ library(dygraphs)
 library(dplyr)
 ```
 
-```{r}
-setwd("C:/Users/caspe/OneDrive - Aarhus Universitet/Dokumenter/Dataprojekt/Projekt/git_simon/DataProject-GAM/GAM_RDS")
-```
-
 
 ```{r loading data}
 # path to folder containing patient files
