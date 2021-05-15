@@ -31,7 +31,7 @@ setwd("C:/Users/caspe/OneDrive - Aarhus Universitet/Dokumenter/Dataprojekt/Proje
 
 ```{r}
 rm(list = ls())
-filepath <- "../Datasets/thoracotomy_waveforms/pt61.RDS"
+filepath <- "../Datasets/thoracotomy_waveforms/pt17.RDS"
 full_dataload <- readRDS(filepath, refhook = NULL)
 resp_data <- readRDS("../Datasets/thoracotomy_waveforms/comb_ventilation_data.RDS")
 ```
@@ -107,8 +107,8 @@ all_in_one_patient <- function(filepath = patient_file, period = 'closed', slice
 ```
 
 ```{r}
-pt <- create_patient_open(filepath)
-qrs_ms <- full_dataload$open_chest$QRSmarker_ms
+pt <- create_patient_closed(filepath)
+qrs_ms <- full_dataload$closed_chest$QRSmarker_ms
 
 # The following code is to give an index to each measurement for which position it has in its heartbeat 
 # cycle. Also removes rows containing NAs giving only rows where we know start and end of cycle
@@ -144,7 +144,7 @@ Stable period (130 - 190):
 
 
 ```{r slicing data}
-pt_sliced <- all_in_one_patient(filepath=filepath, period="open", slice_start=0,slice_end=173)
+pt_sliced <- all_in_one_patient(filepath=filepath, period="closed", slice_start=342,slice_end=360)
 
 #pt_sliced <- pt[pt$time_s > 520  & pt$time_s < 595,] 
 ```
@@ -179,7 +179,12 @@ gratia::draw(cvp_gam)
 ### For saving GAM-object as RDS
 
 ```{r}
-saveRDS(cvp_gam, "pt61OPEN.rds")
+saveRDS(cvp_gam, "pt11CLOSED.rds")
 ```
 
 
+```{r}
+gam_obj <- readRDS("../GAM_RDS/pt03CLOSED.RDS")
+mean(abs(gam_obj$fitted.values-gam_obj$y))
+dygraph_gam(gam_obj, resid = TRUE)
+```
