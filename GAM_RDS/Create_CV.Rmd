@@ -1,0 +1,222 @@
+---
+title: "CV_CSV"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("C:/Users/caspe/OneDrive - Aarhus Universitet/Dokumenter/Dataprojekt/Projekt/git_simon/DataProject-GAM/GAM_RDS")
+library(waveformtools)
+library(tidyverse)
+library(mgcv)
+library(hms)
+library(shiny)
+library(shinythemes)
+library(shinyTime)
+library(data.table)
+library(readr)
+library(dygraphs)
+library(dplyr)
+library(tseries)
+```
+
+## functions to use
+
+```{r}
+add_time <- function(data, ms_between_obs = 8, time_origin = "2021-09-03") {
+  #' adds a column containing time with increments of ms_between_obs
+  #' data:             a dataframe like structure
+  #' ms_between_obs:   the amount of milliseconds between each cycle
+  df <- tibble(data)
+  df$time_ms <- seq(0, nrow(df)*ms_between_obs-ms_between_obs, ms_between_obs)
+  df$time_s <- df$time_ms / 1000
+  return(df)
+}
+
+create_patient_closed <- function(filepath) {
+  #' creates a dataframe containing cvp and time in ms and s for open chest
+  #' filepath:        the path of the patient file
+  dataload <- readRDS(filepath, refhook = NULL)
+  patient <- data.frame(cvp = dataload$closed_chest$CVP) # extract cvp numbers from data
+  patient <- add_time(patient)
+  return(patient)
+}
+
+create_patient_open <- function(filepath) {
+  #' creates a dataframe containing cvp and time in ms and s for open chest
+  #' filepath:        the path of the patient file
+  dataload <- readRDS(filepath, refhook = NULL)
+  patient <- data.frame(cvp = dataload$open_chest$CVP) # extract cvp numbers from data
+  patient <- add_time(patient)
+  return(patient)
+}
+
+get_resp_rate <- function(filepath2 = filepath, resp_dat = resp_data, chest_closed){
+  pt_number <- substr(filepath2, nchar(filepath2)-5, nchar(filepath2)-4)
+  pt_number <- as.integer(pt_number)
+  if (chest_closed==TRUE){
+    pt_number <- pt_number*2 - 1
+  }
+  else {
+    pt_number <- pt_number*2
+  }
+  resp_rate <- resp_dat$resp_rate[pt_number]  # Get respiration rate for patient
+  if (is.nan(resp_rate)){
+    resp_rate <- 1000*60/mean(resp_data$resp_rate, na.rm=TRUE)
+  }
+  else {
+    resp_rate <- 1000*60/resp_rate # Get 60 sec as ms and divide with rate to get amount of ms between cycles
+  }
+  return(resp_rate)
+}
+
+all_in_one_patient <- function(filepath = patient_file, period = 'closed', slice_start = 130, slice_end = 190){
+  #' Creates a dataframe containing all the good stuff for either the closed or open period
+  full_dataload <- readRDS(filepath, refhook = NULL)
+  if(period == 'closed'){
+    pt3_closed <- create_patient_closed(filepath)
+    qrs_ms_closed <- full_dataload$closed_chest$QRSmarker_ms
+    pt3_closed <- na.omit(gen_annotation_index(pt3_closed, qrs_ms_closed, 'time_ms', 'qrs')) 
+    pt3_closed <- na.omit(gen_annotation_index(pt3_closed, seq(0, nrow(pt3_closed)*8, get_resp_rate(chest_closed=TRUE)), 'time_ms', 'insp'))
+    pt3_closed_sliced <- pt3_closed[pt3_closed$time_s > slice_start & pt3_closed$time_s < slice_end,]
+    return(pt3_closed_sliced)
+  }
+  else if(period == 'open'){
+    pt3_open <- create_patient_open(filepath)
+    qrs_ms_open <- full_dataload$open_chest$QRSmarker_ms
+    pt3_open <- na.omit(gen_annotation_index(pt3_open, qrs_ms_open, 'time_ms', 'qrs')) 
+    pt3_open <- na.omit(gen_annotation_index(pt3_open, seq(0, nrow(pt3_open)*8, get_resp_rate(chest_closed=FALSE)), 'time_ms', 'insp'))
+    pt3_open_sliced <- pt3_open[pt3_open$time_s > slice_start & pt3_open$time_s < slice_end,]
+    return(pt3_open_sliced)
+  }
+}
+```
+
+
+
+## loop through rds file and do step
+
+```{r}
+resp_data <- readRDS("../Datasets/thoracotomy_waveforms/comb_ventilation_data.RDS")
+dat_frame <- data.frame(matrix(ncol = 3, nrow = 0))
+x <- c("Model", "CV_MAE", "Model_MAE")
+colnames(dat_frame) <- x
+
+qwerty <- 1
+df <- list.files(pattern = ".rds")
+
+for (name in df){
+  if (name == "CreateRDS.Rmd"){
+  next
+  }
+  print(name)
+  gam_obj <- readRDS(name)
+  time <- gratia::evaluate_smooth(gam_obj,   's(time_s)')
+  model_mae <- mean(abs(gam_obj$fitted.values-gam_obj$y))
+  min_time <- round(min(time$time_s), 2)
+  max_time <- round(max(time$time_s), 2)
+  
+  filepath <- paste0("../Datasets/thoracotomy_waveforms/", substring(name,1,4), ".RDS")
+  full_dataload <- readRDS(filepath, refhook = NULL)
+  
+  if (substring(name, 5, 8) == "OPEN"){
+    pt_sliced <- all_in_one_patient(filepath=filepath, period="open", slice_start=min_time,slice_end=max_time)
+    maes <- data.frame()  # Create empty df to store CV squared error values
+    scores <- data.frame()  # Create empty df to store CV R2 values
+    set.seed(42)  # Set seed for reproducibility
+    k <- 10  # Define number of folds
+    for (i in 1:k) {
+    # Create weighting column
+      pt_sliced$weight <- sample(c(0,1),size=nrow(pt_sliced),replace=TRUE,prob=c(0.2,0.8))  # 0 Indicates testing sample, 1 training        sample
+  
+      # Generate training dataset
+      trainingdata <- pt_sliced[pt_sliced$weight == 1, ]  # Select training data by weight  
+
+      # Generate test dataset
+      testdata <- pt_sliced[pt_sliced$weight == 0, ]  # Select test data by weight
+  
+      # Run GAM with MRF
+      # ctrl <- gam.control(nthreads = 6) #Set controls
+      m <- bam(
+        cvp ~ s(qrs_rel_index, bs = 'cc', k = 50) +
+            s(insp_rel_index, bs = 'cc', k = 30) +
+            ti(
+                qrs_rel_index,
+                insp_rel_index,
+                bs = c('cc', 'cc'),
+                k = c(20, 10)
+            ) +
+            s(time_s),
+        method = 'REML',
+        data = trainingdata,
+        rho = 0.95,
+        nthreads = 16  # Number of (virtual) cores
+      )
+  
+      # Predict test data
+      pred <- predict(m,newdata=testdata)
+      # Extract MSES
+      maes[i,1] <- mean(abs(pt_sliced$cvp[pt_sliced$weight==0] - pred))
+      #scores[i,1] <- summary(m)$r.sq
+    }
+    av.mae.GMRF <- mean(maes$V1)
+    #av.r2.GMRF <- mean(scores$V1)
+    dat_frame[qwerty, 1] <- name
+    dat_frame[qwerty, 2] <- av.mae.GMRF
+    dat_frame[qwerty, 3] <- model_mae
+    qwerty <- qwerty + 1
+  }
+  else{
+    pt_sliced <- all_in_one_patient(filepath=filepath, period="closed", slice_start=min_time,slice_end=max_time)
+    maes <- data.frame()  # Create empty df to store CV squared error values
+    scores <- data.frame()  # Create empty df to store CV R2 values
+    set.seed(42)  # Set seed for reproducibility
+    k <- 10  # Define number of folds
+    for (i in 1:k) {
+    # Create weighting column
+      pt_sliced$weight <- sample(c(0,1),size=nrow(pt_sliced),replace=TRUE,prob=c(0.2,0.8))  # 0 Indicates testing sample, 1 training        sample
+  
+      # Generate training dataset
+      trainingdata <- pt_sliced[pt_sliced$weight == 1, ]  # Select training data by weight  
+
+      # Generate test dataset
+      testdata <- pt_sliced[pt_sliced$weight == 0, ]  # Select test data by weight
+  
+      # Run GAM with MRF
+      # ctrl <- gam.control(nthreads = 6) #Set controls
+      m <- bam(
+        cvp ~ s(qrs_rel_index, bs = 'cc', k = 50) +
+            s(insp_rel_index, bs = 'cc', k = 30) +
+            ti(
+                qrs_rel_index,
+                insp_rel_index,
+                bs = c('cc', 'cc'),
+                k = c(20, 10)
+            ) +
+            s(time_s),
+        method = 'REML',
+        data = trainingdata,
+        rho = 0.95,
+        nthreads = 16  # Number of (virtual) cores
+      )
+  
+      # Predict test data
+      pred <- predict(m,newdata=testdata)
+      # Extract MSES
+      maes[i,1] <- mean(abs(pt_sliced$cvp[pt_sliced$weight==0] - pred))
+      #scores[i,1] <- summary(m)$r.sq
+    }
+    av.mae.GMRF <- mean(maes$V1)
+    #av.r2.GMRF <- mean(scores$V1)
+    dat_frame[qwerty, 1] <- name
+    dat_frame[qwerty, 2] <- av.mae.GMRF
+    dat_frame[qwerty, 3] <- model_mae
+    qwerty <- qwerty + 1
+  }
+}
+```
+
+```{r}
+write.csv(dat_frame, 'CV_MAE.csv')
+```
+

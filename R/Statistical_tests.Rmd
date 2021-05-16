@@ -148,7 +148,7 @@ We find that our p-value is very low meaning that the possibility of heterosceda
 ### Cross validation
 
 ```{r}
-mses <- data.frame()  # Create empty df to store CV squared error values
+maes <- data.frame()  # Create empty df to store CV squared error values
 scores <- data.frame()  # Create empty df to store CV R2 values
 set.seed(42)  # Set seed for reproducibility
 k <- 10  # Define number of folds

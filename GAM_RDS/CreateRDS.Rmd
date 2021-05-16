@@ -108,7 +108,7 @@ all_in_one_patient <- function(filepath = patient_file, period = 'closed', slice
 
 ```{r}
 pt <- create_patient_closed(filepath)
-qrs_ms <- full_dataload$closed_chest$QRSmarker_ms
+#qrs_ms <- full_dataload$closed_chest$QRSmarker_ms
 
 # The following code is to give an index to each measurement for which position it has in its heartbeat 
 # cycle. Also removes rows containing NAs giving only rows where we know start and end of cycle
