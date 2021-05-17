@@ -120,15 +120,15 @@ gratia::draw(cvp_gam)
 Compared with linear model (note it is obviously not a linear relation, so intuitively a bad value for the linear model). Lower BIC indicates less loss of information.
 
 ```{r}
-lm1 <- lm(open_chest_cvp ~ qrs_rel_index * insp_rel_index + time_s, data = pt18_sliced)
+lm1 <- lm(closed_chest_cvp ~ qrs_rel_index * insp_rel_index + time_s, data = pt_sliced)
 
 BIC(cvp_gam, lm1)
 ```
 
 ```{r}
-nlm1 <- lm(open_chest_cvp ~ poly(qrs_rel_index, 12) + poly(insp_rel_index, 8) + poly(time_s, 3), data = pt18_sliced)
+nlm1 <- lm(closed_chest_cvp ~ poly(qrs_rel_index, 12) + poly(insp_rel_index, 8) + qrs_rel_index:insp_rel_index + poly(time_s, 3), data = pt_sliced)
 
-BIC(nlm1)
+BIC(nlm1, cvp_gam, lm1)
 ```
 
 
