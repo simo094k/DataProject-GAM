@@ -88,6 +88,27 @@ create_viz <- function(pred_both, patient_number){
 }
 
 
+create_contour_patient <- function(open_data, closed_data){
+  gather_in_one <- rbind(open_data, closed_data)
+  gather_in_one$indicator <- cbind(c(rep("open_chest", nrow(open_data)),
+                   rep("closed_chest", nrow(closed_data))))
+  return(gather_in_one)
+}
+
+create_contour_viz <- function(gather_in_one, patient_number){
+  viz <- ggplot(gather_in_one, aes(qrs_rel_index, insp_rel_index, z = est)) +
+    geom_raster(aes(fill = est)) +
+    geom_contour(colour = "green") +
+    scale_fill_gradientn(colours=c("#0000FFFF","#FFFFFFFF","#FF0000FF")) +
+      labs(title = paste0("Patient ", patient_number),
+           y = "insp_rel_index",
+           x = "qrs_rel_index") +
+      facet_wrap(~ indicator)
+  return(viz)
+}
+
+
+
 give_it_center <- function(data_set, center = 50){
   
   if (which.max(data_set$est) > center ){
@@ -133,6 +154,9 @@ pt_data_open <- readRDS(patient_path_open, refhook = NULL)
   
 patient_path_closed <- paste("../GAM_RDS/", testpt, "CLOSED.rds",sep="")
 pt_data_closed <- readRDS(patient_path_closed, refhook = NULL)
+
+
+a <- create_contour_patient(pt_data_open, pt_data_closed)
 
 
 # For snap plots
@@ -204,7 +228,7 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
              mainPanel( plotOutput(outputId = "insp_plot")),
                  verbatimTextOutput("maksimum_closed"),
                  verbatimTextOutput("maksimum_open"),
-                  #plotOutput(outputId = "kontur")
+                 #plotOutput(outputId = "side_by_side_contour")
              )
   )
 )
@@ -224,9 +248,9 @@ server <- function(input, output) {
                                    patient_number = toString(strtoi(str_sub(input$patient,-2))))})
 
   # For contour plot
-  kontur_open <- reactive({gratia::draw(pt_data_open(), select =3)})
+  #kontur_open <- reactive({gratia::draw(pt_data_open(), select =3)})
   
-  kontur_closed <- reactive({gratia::draw(pt_data_closed(), select =3)})
+  #kontur_closed <- reactive({gratia::draw(pt_data_closed(), select =3)})
   
   # For stacked INSP plot
   stackedplotINSP <- reactive({ggplot() +
@@ -251,14 +275,23 @@ server <- function(input, output) {
     ggtitle("QRS")})
   
   
+  # For contour-plots
+  data_open_contour <- reactive({ gratia::evaluate_smooth(pt_data_open(), 'ti(qrs_rel_index,insp_rel_index)')})
+  data_closed_contour <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 'ti(qrs_rel_index,insp_rel_index)')})
+  
+  data_contour_patient <- reactive({ create_contour_patient(data_open_contour(), data_closed_contour())})
+  contour_samlet <- reactive({create_contour_viz(data_contour_patient(), input$patient)})
+  
+
+  
   output$samlet_plots <- renderPlot({
 #    pt <- list("ptopen" = pt_data_open(), "ptclosed" = pt_data_closed())
 #    create_viz(pred_both = preds, patient_number = toString(strtoi(str_sub(input$patient,-2))))
 #    testp <- qplot(rnorm(500),fill=I("red"),binwidth=0.2,main="plotgraph1")
     plotmatrix <- rbind(c(1,2),
                         c(3,3),
-                        c(4,5))
-    plotlist <- list(stackedplotINSP(),stackedplotQRS(),snapplot(),kontur_closed(), kontur_open())
+                        c(4,4))
+    plotlist <- list(stackedplotINSP(),stackedplotQRS(),snapplot(), contour_samlet())
 #    wtlist <- c(input$wt1,input$wt2,input$wt3)
      # remove the null plots from ptlist and wtlist
 #    to_delete <- !sapply(ptlist,is.null)
@@ -268,6 +301,7 @@ server <- function(input, output) {
     grid.arrange(grobs=plotlist, layout_matrix = plotmatrix)#nrow=length(plotlist))
     
   })# renderPlot ends here
+  
   
   
   ## Til tabpanel 3
@@ -292,5 +326,5 @@ server <- function(input, output) {
 } # server slutter
 
 OurApp <- shinyApp(ui = ui, server = server)
-runApp(OutApp)
+runApp(OurApp)
 ```
