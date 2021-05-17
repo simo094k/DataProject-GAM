@@ -42,8 +42,8 @@ gen_predictions <- function(cvp_gam) {
     if (is.null(cvp_gam)) return(NULL)
     
     #find max of insp_index smooth
-    insp_rel_index_smooth <- gratia::evaluate_smooth(cvp_gam, 's(insp_rel_index)')
-    insp_rel_index_max <- insp_rel_index_smooth$insp_rel_index[which.max(insp_rel_index_smooth$est)]
+    #insp_rel_index_smooth <- gratia::evaluate_smooth(cvp_gam, 's(insp_rel_index)')
+    #insp_rel_index_max <- insp_rel_index_smooth$insp_rel_index[which.max(insp_rel_index_smooth$est)]
 
     structured_data <- expand.grid(insp_rel_index = c(
         # Generate predictions for 10 levels of inspiration between start and max inspiration
@@ -201,9 +201,10 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
                                  min = 1, max = 100, value = 50)
              ),
              
-             mainPanel(plotOutput(outputId = "insp_plot")),
+             mainPanel( plotOutput(outputId = "insp_plot")),
                  verbatimTextOutput("maksimum_closed"),
-                 verbatimTextOutput("maksimum_open")
+                 verbatimTextOutput("maksimum_open"),
+                  #plotOutput(outputId = "kontur")
              )
   )
 )
@@ -222,6 +223,11 @@ server <- function(input, output) {
   snapplot <- reactive({create_viz(pred_both = preds(),
                                    patient_number = toString(strtoi(str_sub(input$patient,-2))))})
 
+  # For contour plot
+  kontur_open <- reactive({gratia::draw(pt_data_open(), select =3)})
+  
+  kontur_closed <- reactive({gratia::draw(pt_data_closed(), select =3)})
+  
   # For stacked INSP plot
   stackedplotINSP <- reactive({ggplot() +
     geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_open(),'s(insp_rel_index)'),input$center_open),
@@ -250,8 +256,9 @@ server <- function(input, output) {
 #    create_viz(pred_both = preds, patient_number = toString(strtoi(str_sub(input$patient,-2))))
 #    testp <- qplot(rnorm(500),fill=I("red"),binwidth=0.2,main="plotgraph1")
     plotmatrix <- rbind(c(1,2),
-                        c(3,3))
-    plotlist <- list(stackedplotINSP(),stackedplotQRS(),snapplot())
+                        c(3,3),
+                        c(4,5))
+    plotlist <- list(stackedplotINSP(),stackedplotQRS(),snapplot(),kontur_closed(), kontur_open())
 #    wtlist <- c(input$wt1,input$wt2,input$wt3)
      # remove the null plots from ptlist and wtlist
 #    to_delete <- !sapply(ptlist,is.null)
@@ -264,12 +271,10 @@ server <- function(input, output) {
   
   
   ## Til tabpanel 3
-
-
- data_time_open  <- reactive({ gratia::evaluate_smooth(pt_data_open(),   's(time_s)')})
- data_time_closed <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 's(time_s)')})
+  data_time_open  <- reactive({ gratia::evaluate_smooth(pt_data_open(),   's(time_s)')})
+  data_time_closed <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 's(time_s)')})
   
- open_times <- reactive({round(c(min(data_time_open()$time_s) , max(data_time_open()$time_s),
+  open_times <- reactive({round(c(min(data_time_open()$time_s) , max(data_time_open()$time_s),
                                  max(data_time_open()$time_s) - min(data_time_open()$time_s)),2)})
   
   closed_times <- reactive({round(c(min(data_time_closed()$time_s) , max(data_time_closed()$time_s),
@@ -282,9 +287,10 @@ server <- function(input, output) {
   output$maksimum_closed <- renderText({ paste0("CLOSED - Start: ", as.character(closed_times()[1]), " Slut: ",
                                                 as.character(closed_times()[2]), " Diff: ",
                                                 as.character(closed_times()[3])) })
-  
-}
-shinyApp(ui = ui, server = server)
-# https://shiny.rstudio.com/articles/layout-guide.html
-# https://www.youtube.com/watch?v=PHdIivFAq7Q
+
+    
+} # server slutter
+
+OurApp <- shinyApp(ui = ui, server = server)
+runApp(OutApp)
 ```
