@@ -17,7 +17,7 @@ List of 3
   ..$ CVP                : Central venous pressure (125 Hz)
   ..$ QRSmarker_ecg_index: Occurrence of QRS complex in ECG vector (index)  
   ..$ QRSmarker_ms       : Occurrence of QRS complex in milliseconds from start
- $ open_chest  : Data recorded with closed chest
+ $ open_chest  : Data recorded with open chest
   ..$ ECG                : ... Same as above
   ..$ ABP                : 
   ..$ CVP                : 
