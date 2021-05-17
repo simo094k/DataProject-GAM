@@ -98,7 +98,7 @@ create_contour_patient <- function(open_data, closed_data){
 create_contour_viz <- function(gather_in_one, patient_number){
   viz <- ggplot(gather_in_one, aes(qrs_rel_index, insp_rel_index, z = est)) +
     geom_raster(aes(fill = est)) +
-    geom_contour(colour = "green") +
+    geom_contour(colour = "black") +
     scale_fill_gradientn(colours=c("#0000FFFF","#FFFFFFFF","#FF0000FF")) +
       labs(title = paste0("Patient ", patient_number),
            y = "insp_rel_index",
@@ -190,6 +190,7 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
 )
+table_values <- read_csv("../GAM_RDS/CV_MAE.csv") 
 
 patient_list <- paste('pt', str_pad(seq(1,61), 2, pad = "0"), sep = "")
 
@@ -225,10 +226,11 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
                                  min = 1, max = 100, value = 50)
              ),
              
-             mainPanel( plotOutput(outputId = "insp_plot")),
+             mainPanel( plotOutput(outputId = "insp_plot"), tableOutput('table')),
                  verbatimTextOutput("maksimum_closed"),
                  verbatimTextOutput("maksimum_open"),
                  #plotOutput(outputId = "side_by_side_contour")
+                 
              )
   )
 )
@@ -304,27 +306,24 @@ server <- function(input, output) {
   
   
   
-  ## Til tabpanel 3
+  ## Dette er TABLE!!
   data_time_open  <- reactive({ gratia::evaluate_smooth(pt_data_open(),   's(time_s)')})
   data_time_closed <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 's(time_s)')})
   
-  open_times <- reactive({round(c(min(data_time_open()$time_s) , max(data_time_open()$time_s),
-                                 max(data_time_open()$time_s) - min(data_time_open()$time_s)),2)})
   
-  closed_times <- reactive({round(c(min(data_time_closed()$time_s) , max(data_time_closed()$time_s),
-                                    max(data_time_closed()$time_s) - min(data_time_closed()$time_s)),2)})
+  first_table <- reactive({subset(table_values, Model %in% c(paste0(input$patient, "OPEN.rds", sep=""),paste0(input$patient, "CLOSED.rds", sep="")), select = c("Model", "CV_MAE", "Model_MAE")) })
   
-  output$maksimum_open <- renderText({ paste0("Open - Start: ", as.character(open_times()[1]), " Slut: ",
-                                              as.character(open_times()[2]), " Diff: ", as.character(open_times()[3]))
-    })
+  start_time <- reactive({ c(min(data_time_closed()$time_s), min(data_time_open()$time_s)) })
+  end_time <- reactive({ c(max(data_time_closed()$time_s), max(data_time_open()$time_s)) })
+  diff_time <- reactive({ c(max(data_time_closed()$time_s) - min(data_time_closed()$time_s), max(data_time_open()$time_s) - min(data_time_open()$time_s)) })
   
-  output$maksimum_closed <- renderText({ paste0("CLOSED - Start: ", as.character(closed_times()[1]), " Slut: ",
-                                                as.character(closed_times()[2]), " Diff: ",
-                                                as.character(closed_times()[3])) })
-
-    
+  #final_table <- reactive({cbind(first_table(), start_time(), end_time(), diff_time())})
+  
+  output$table <- renderTable({cbind(first_table(), start_time(), end_time(), diff_time())})
+  
 } # server slutter
 
 OurApp <- shinyApp(ui = ui, server = server)
 runApp(OurApp)
 ```
+
