@@ -1,0 +1,290 @@
+---
+title: "GAM for thoracotomy waveforms"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r message=FALSE, warning=FALSE}
+rm(list = ls()) # clearing workspace
+library(viridis)
+library(waveformtools)
+library(tidyverse)
+library(mgcv)
+library(hms)
+library(shiny)
+library(shinythemes)
+library(shinyTime)
+library(data.table)
+library(readr)
+library(dygraphs)
+library(dplyr)
+library(gridExtra)
+```
+
+Functions:
+
+```{r}
+pt_range <- c(2, 3, 4) #seq(1,61) # insert the number of the patient you want to visualize
+
+load_patient <- function(patient_number){
+    # a function that loads GAMs in RDS file format using a specific nomenclature
+    ptopen <- readRDS(paste0("../GAM_RDS/",patient_number, "OPEN.rds"))
+    ptclosed <- readRDS(paste0("../GAM_RDS/",patient_number, "CLOSED.rds"))
+    pt <- list("ptopen" = ptopen, "ptclosed" = ptclosed)
+    return(pt)
+}
+
+
+gen_predictions <- function(cvp_gam) {
+    # a function that generates predictions according to the given model
+    # the code is a slightly modified version of Johannes'
+    if (is.null(cvp_gam)) return(NULL)
+    
+    #find max of insp_index smooth
+    insp_rel_index_smooth <- gratia::evaluate_smooth(cvp_gam, 's(insp_rel_index)')
+    insp_rel_index_max <- insp_rel_index_smooth$insp_rel_index[which.max(insp_rel_index_smooth$est)]
+
+    structured_data <- expand.grid(insp_rel_index = c(
+        # Generate predictions for 10 levels of inspiration between start and max inspiration
+        seq(0, 0.9, length.out = 10)), #insp_rel_index_max, length.out = 10)), 
+        # And 1 prediction 1 sec after max inspiration                                      
+        #insp_rel_index_max + c(1)), # uncommented for our use case
+        # Generate 200 predictions uniformaly across the qrs_rel_index (to get a smooth line)
+        qrs_rel_index = seq(0,1, length.out = 500),
+        # Choose 'some' position for the trend smooth (or better, do not include it in the prediction)
+        time_s = 580)
+    
+    struct_pred <- predict(cvp_gam, newdata = structured_data, se.fit = TRUE, exclude='s(time_s)') 
+    
+    mutate(structured_data, 
+           CVP = struct_pred$fit,
+           CVP_low = CVP - 1.96 * struct_pred$se.fit,
+           CVP_up = CVP + 1.96 * struct_pred$se.fit)
+}
+
+
+create_patient_preds <- function(ptopen, ptclosed){
+    # a function that creates predictions and combines data from closed and open chest into one data frame 
+    pred_open <- gen_predictions(ptopen)
+    pred_closed <- gen_predictions(ptclosed)
+    pred_both <- cbind(indicator=c(rep("open_chest", nrow(pred_open)),
+                                   rep("closed_chest", nrow(pred_closed))),
+                       pred_both <- rbind(pred_open, pred_closed))
+    return(pred_both)
+}
+
+
+create_viz <- function(pred_both, patient_number){
+    # a function that creates a visualization comparing closed and open predictions  
+    viz <- ggplot(data = pred_both, aes(x=qrs_rel_index, y=CVP, group = insp_rel_index)) +
+    geom_line(aes(color=insp_rel_index), size = 0.9) +
+    scale_color_gradientn(colours = turbo(10)) +
+    labs(title = paste0("Patient ", patient_number),
+         y = "CVP",
+         x = "qrs_rel_index") +
+    facet_wrap(~ indicator)
+    return(viz)
+}
+
+
+give_it_center <- function(data_set, center = 50){
+  
+  if (which.max(data_set$est) > center ){
+    biggest <- which.max(data_set$est)
+    
+    value_to_subtract <- data_set$insp_rel_index[biggest] - data_set$insp_rel_index[center]
+    
+    data_set$insp_rel_index <- data_set$insp_rel_index - value_to_subtract
+  
+    for (index in 1:length(data_set$insp_rel_index)) {
+      if (data_set$insp_rel_index[index] < 0 ){
+        data_set$insp_rel_index[index] <- data_set$insp_rel_index[index] +1
+      }
+    }
+  } else{
+    smallest <- which.max(data_set$est)
+    
+    value_to_add <- data_set$insp_rel_index[center] - data_set$insp_rel_index[smallest]
+    
+    data_set$insp_rel_index <- data_set$insp_rel_index + value_to_add
+  
+    for (index in 1:length(data_set$insp_rel_index)) {
+      if (data_set$insp_rel_index[index] > 1 ){
+        data_set$insp_rel_index[index] <- data_set$insp_rel_index[index] -1
+      }
+    }
+  }
+  return(data_set)
+}
+
+
+```
+
+Testing area:
+
+```{r}
+testpt <- "pt02"
+center_open <- 25
+center_closed <- 25
+
+patient_path_open <- paste("../GAM_RDS/", testpt, "OPEN.rds",sep="")
+pt_data_open <- readRDS(patient_path_open, refhook = NULL)
+  
+patient_path_closed <- paste("../GAM_RDS/", testpt, "CLOSED.rds",sep="")
+pt_data_closed <- readRDS(patient_path_closed, refhook = NULL)
+
+
+# For snap plots
+preds <- create_patient_preds(ptopen = pt_data_open, ptclosed = pt_data_closed)
+snapplot <- create_viz(pred_both = preds,
+                       patient_number = toString(strtoi(str_sub(testpt,-2))))
+
+# For stacked INSP/QRS plots
+stackedplotINSP <- ggplot() +
+  geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_open,'s(insp_rel_index)'),center_open),
+            aes(insp_rel_index,est, colour="open")) +
+  geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_closed,'s(insp_rel_index)'),center_closed),
+            aes(insp_rel_index,est, colour="closed")) +
+  scale_color_manual(values = c('open' = 'darkblue',
+                                'closed' = 'red')) +
+  theme(legend.position = "none") +
+  ggtitle("INSP")
+
+```
+
+
+```{r}
+test <- give_it_center(gratia::evaluate_smooth(pt_data_open,'s(insp_rel_index)'),center_open)
+```
+
+
+Shiny below:
+
+```{r shiny app}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+
+patient_list <- paste('pt', str_pad(seq(1,61), 2, pad = "0"), sep = "")
+
+ui <- fluidPage(theme = shinytheme("sandstone"),
+  navbarPage("GAM on heart-lung interaction during thoractomy", # Page header
+    
+    # First page begins
+    tabPanel("Main page",
+        
+        # Parameters
+        sidebarPanel(h3("Inputs"),
+                     selectInput("patient", label = "Select patient", 
+                                 choices = list(patient_list = patient_list),  selected = "pt02"),
+                     sliderInput("center_open", label = "Highest point center open",
+                                 min = 1, max = 100, value = 50),
+                     sliderInput("center_closed", label = "Highest point center closed",
+                                 min = 1, max = 100, value = 50)),
+
+                  
+        # Main panel for displaying outputs
+        mainPanel(plotOutput(outputId = "samlet_plots", height = "800px"), tableOutput("oversigt_tabel"))
+    ), 
+  
+    # Second page begins
+    tabPanel("Info", "Created by Andreas, Casper, Mads & Simon"),
+    
+    # Third page begins
+    tabPanel("QRS og INSP",
+             sidebarPanel(h3("Inputs"),
+                  sliderInput("center_open", label = "Highest point center open",
+                                 min = 1, max = 100, value = 50),
+                  sliderInput("center_closed", label = "Highest point center closed",
+                                 min = 1, max = 100, value = 50)
+             ),
+             
+             mainPanel(plotOutput(outputId = "insp_plot")),
+                 verbatimTextOutput("maksimum_closed"),
+                 verbatimTextOutput("maksimum_open")
+             )
+  )
+)
+
+server <- function(input, output) {
+  
+  # Loading data
+  patient_path_open <- reactive({paste("../GAM_RDS/", input$patient, "OPEN.rds",sep="") })
+  pt_data_open <- reactive({readRDS(patient_path_open(), refhook = NULL) })
+  
+  patient_path_closed <- reactive({paste("../GAM_RDS/", input$patient, "CLOSED.rds",sep="") })
+  pt_data_closed <- reactive({readRDS(patient_path_closed(), refhook = NULL) })
+
+  # For snap plots
+  preds <- reactive({create_patient_preds(ptopen = pt_data_open(), ptclosed = pt_data_closed())})
+  snapplot <- reactive({create_viz(pred_both = preds(),
+                                   patient_number = toString(strtoi(str_sub(input$patient,-2))))})
+
+  # For stacked INSP plot
+  stackedplotINSP <- reactive({ggplot() +
+    geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_open(),'s(insp_rel_index)'),input$center_open),
+              aes(insp_rel_index,est, colour="open")) +
+    geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_closed(),'s(insp_rel_index)'),input$center_closed),
+              aes(insp_rel_index,est, colour="closed")) +
+    scale_color_manual(values = c('open' = 'darkblue',
+                                  'closed' = 'red')) +
+    theme(legend.position = "none") +
+    ggtitle("INSP")})
+
+  # For stacked QRS plot    
+  stackedplotQRS <- reactive({ggplot() +
+    geom_line(data=gratia::evaluate_smooth(pt_data_open(),'s(qrs_rel_index)'),
+              aes(qrs_rel_index,est, colour="open")) +
+    geom_line(data=gratia::evaluate_smooth(pt_data_closed(),'s(qrs_rel_index)'),
+              aes(qrs_rel_index,est, colour="closed")) +
+    scale_color_manual(values = c('open' = 'darkblue',
+                                  'closed' = 'red')) +
+    labs(color = 'Status') +
+    ggtitle("QRS")})
+  
+  
+  output$samlet_plots <- renderPlot({
+#    pt <- list("ptopen" = pt_data_open(), "ptclosed" = pt_data_closed())
+#    create_viz(pred_both = preds, patient_number = toString(strtoi(str_sub(input$patient,-2))))
+#    testp <- qplot(rnorm(500),fill=I("red"),binwidth=0.2,main="plotgraph1")
+    plotmatrix <- rbind(c(1,2),
+                        c(3,3))
+    plotlist <- list(stackedplotINSP(),stackedplotQRS(),snapplot())
+#    wtlist <- c(input$wt1,input$wt2,input$wt3)
+     # remove the null plots from ptlist and wtlist
+#    to_delete <- !sapply(ptlist,is.null)
+#    ptlist <- ptlist[to_delete] 
+#    wtlist <- wtlist[to_delete]
+    if (length(plotlist)==0) return(NULL)
+    grid.arrange(grobs=plotlist, layout_matrix = plotmatrix)#nrow=length(plotlist))
+    
+  })# renderPlot ends here
+  
+  
+  ## Til tabpanel 3
+
+
+ data_time_open  <- reactive({ gratia::evaluate_smooth(pt_data_open(),   's(time_s)')})
+ data_time_closed <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 's(time_s)')})
+  
+ open_times <- reactive({round(c(min(data_time_open()$time_s) , max(data_time_open()$time_s),
+                                 max(data_time_open()$time_s) - min(data_time_open()$time_s)),2)})
+  
+  closed_times <- reactive({round(c(min(data_time_closed()$time_s) , max(data_time_closed()$time_s),
+                                    max(data_time_closed()$time_s) - min(data_time_closed()$time_s)),2)})
+  
+  output$maksimum_open <- renderText({ paste0("Open - Start: ", as.character(open_times()[1]), " Slut: ",
+                                              as.character(open_times()[2]), " Diff: ", as.character(open_times()[3]))
+    })
+  
+  output$maksimum_closed <- renderText({ paste0("CLOSED - Start: ", as.character(closed_times()[1]), " Slut: ",
+                                                as.character(closed_times()[2]), " Diff: ",
+                                                as.character(closed_times()[3])) })
+  
+}
+shinyApp(ui = ui, server = server)
+# https://shiny.rstudio.com/articles/layout-guide.html
+# https://www.youtube.com/watch?v=PHdIivFAq7Q
+```
