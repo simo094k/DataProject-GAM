@@ -1,0 +1,32 @@
+  # For stacked plots
+  testio <- give_it_center(gratia::evaluate_smooth(pt_data_open,'s(insp_rel_index)'),center_open)
+  testic <- give_it_center(gratia::evaluate_smooth(pt_data_closed,'s(insp_rel_index)'),center_closed)
+  testqo <- gratia::evaluate_smooth(pt_data_open,'s(qrs_rel_index)')
+  testqc <- gratia::evaluate_smooth(pt_data_closed,'s(qrs_rel_index)')
+  
+  colnames(testio)[3] <- "rel_index"
+  colnames(testic)[3] <- "rel_index"
+  colnames(testqo)[3] <- "rel_index"
+  colnames(testqc)[3] <- "rel_index"
+  
+  comb <- cbind(indicator=c(rep("open_chest", nrow(testio)),
+                            rep("closed_chest", nrow(testic))),
+                both <- rbind(testio, testic, testqo, testqc))
+  
+  stackedplotINSP <- ggplot(data=comb, aes(x=rel_index, y=est, group=indicator)) +
+    geom_line(aes(color=indicator)) +
+    facet_wrap(~ smooth, labeller = labeller(rel_index = 
+      c("s(insp_rel_index)" = "test5",
+        "s(qrs_rel_index)" = "condition: 6"))) +
+    labs(y="Estimated effect on CVP",
+         x="Relative respiration/QRS index")
+
+
+
+TO DO:
+- synkroniser insp_rel_index
+- tilføj residual plot 
+- byt rundt: stacked, contour, snap, residual
+- tilføj intercept til 
+- checkboks med "vis differensen" for hvert af de 3 plots
+- animation gganimate

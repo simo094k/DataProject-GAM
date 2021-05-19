@@ -42,8 +42,8 @@ gen_predictions <- function(cvp_gam) {
     if (is.null(cvp_gam)) return(NULL)
     
     #find max of insp_index smooth
-    insp_rel_index_smooth <- gratia::evaluate_smooth(cvp_gam, 's(insp_rel_index)')
-    insp_rel_index_max <- insp_rel_index_smooth$insp_rel_index[which.max(insp_rel_index_smooth$est)]
+    #insp_rel_index_smooth <- gratia::evaluate_smooth(cvp_gam, 's(insp_rel_index)')
+    #insp_rel_index_max <- insp_rel_index_smooth$insp_rel_index[which.max(insp_rel_index_smooth$est)]
 
     structured_data <- expand.grid(insp_rel_index = c(
         # Generate predictions for 10 levels of inspiration between start and max inspiration
@@ -86,6 +86,27 @@ create_viz <- function(pred_both, patient_number){
     facet_wrap(~ indicator)
     return(viz)
 }
+
+
+create_contour_patient <- function(open_data, closed_data){
+  gather_in_one <- rbind(open_data, closed_data)
+  gather_in_one$indicator <- cbind(c(rep("open_chest", nrow(open_data)),
+                   rep("closed_chest", nrow(closed_data))))
+  return(gather_in_one)
+}
+
+create_contour_viz <- function(gather_in_one, patient_number){
+  viz <- ggplot(gather_in_one, aes(qrs_rel_index, insp_rel_index, z = est)) +
+    geom_raster(aes(fill = est)) +
+    geom_contour(colour = "black") +
+    scale_fill_gradientn(colours=c("#0000FFFF","#FFFFFFFF","#FF0000FF")) +
+      labs(title = paste0("Patient ", patient_number),
+           y = "insp_rel_index",
+           x = "qrs_rel_index") +
+      facet_wrap(~ indicator)
+  return(viz)
+}
+
 
 
 give_it_center <- function(data_set, center = 50){
@@ -135,6 +156,9 @@ patient_path_closed <- paste("../GAM_RDS/", testpt, "CLOSED.rds",sep="")
 pt_data_closed <- readRDS(patient_path_closed, refhook = NULL)
 
 
+a <- create_contour_patient(pt_data_open, pt_data_closed)
+
+
 # For snap plots
 preds <- create_patient_preds(ptopen = pt_data_open, ptclosed = pt_data_closed)
 snapplot <- create_viz(pred_both = preds,
@@ -166,6 +190,7 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>"
 )
+table_values <- read_csv("../GAM_RDS/CV_MAE.csv") 
 
 patient_list <- paste('pt', str_pad(seq(1,61), 2, pad = "0"), sep = "")
 
@@ -201,9 +226,11 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
                                  min = 1, max = 100, value = 50)
              ),
              
-             mainPanel(plotOutput(outputId = "insp_plot")),
+             mainPanel( plotOutput(outputId = "insp_plot"), tableOutput('table')),
                  verbatimTextOutput("maksimum_closed"),
-                 verbatimTextOutput("maksimum_open")
+                 verbatimTextOutput("maksimum_open"),
+                 #plotOutput(outputId = "side_by_side_contour")
+                 
              )
   )
 )
@@ -222,6 +249,11 @@ server <- function(input, output) {
   snapplot <- reactive({create_viz(pred_both = preds(),
                                    patient_number = toString(strtoi(str_sub(input$patient,-2))))})
 
+  # For contour plot
+  #kontur_open <- reactive({gratia::draw(pt_data_open(), select =3)})
+  
+  #kontur_closed <- reactive({gratia::draw(pt_data_closed(), select =3)})
+  
   # For stacked INSP plot
   stackedplotINSP <- reactive({ggplot() +
     geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_open(),'s(insp_rel_index)'),input$center_open),
@@ -245,13 +277,23 @@ server <- function(input, output) {
     ggtitle("QRS")})
   
   
+  # For contour-plots
+  data_open_contour <- reactive({ gratia::evaluate_smooth(pt_data_open(), 'ti(qrs_rel_index,insp_rel_index)')})
+  data_closed_contour <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 'ti(qrs_rel_index,insp_rel_index)')})
+  
+  data_contour_patient <- reactive({ create_contour_patient(data_open_contour(), data_closed_contour())})
+  contour_samlet <- reactive({create_contour_viz(data_contour_patient(), input$patient)})
+  
+
+  
   output$samlet_plots <- renderPlot({
 #    pt <- list("ptopen" = pt_data_open(), "ptclosed" = pt_data_closed())
 #    create_viz(pred_both = preds, patient_number = toString(strtoi(str_sub(input$patient,-2))))
 #    testp <- qplot(rnorm(500),fill=I("red"),binwidth=0.2,main="plotgraph1")
     plotmatrix <- rbind(c(1,2),
-                        c(3,3))
-    plotlist <- list(stackedplotINSP(),stackedplotQRS(),snapplot())
+                        c(3,3),
+                        c(4,4))
+    plotlist <- list(stackedplotINSP(),stackedplotQRS(),snapplot(), contour_samlet())
 #    wtlist <- c(input$wt1,input$wt2,input$wt3)
      # remove the null plots from ptlist and wtlist
 #    to_delete <- !sapply(ptlist,is.null)
@@ -263,28 +305,25 @@ server <- function(input, output) {
   })# renderPlot ends here
   
   
-  ## Til tabpanel 3
+  
+  ## Dette er TABLE!!
+  data_time_open  <- reactive({ gratia::evaluate_smooth(pt_data_open(),   's(time_s)')})
+  data_time_closed <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 's(time_s)')})
+  
+  
+  first_table <- reactive({subset(table_values, Model %in% c(paste0(input$patient, "OPEN.rds", sep=""),paste0(input$patient, "CLOSED.rds", sep="")), select = c("Model", "CV_MAE", "Model_MAE")) })
+  
+  start_time <- reactive({ c(min(data_time_closed()$time_s), min(data_time_open()$time_s)) })
+  end_time <- reactive({ c(max(data_time_closed()$time_s), max(data_time_open()$time_s)) })
+  diff_time <- reactive({ c(max(data_time_closed()$time_s) - min(data_time_closed()$time_s), max(data_time_open()$time_s) - min(data_time_open()$time_s)) })
+  
+  #final_table <- reactive({cbind(first_table(), start_time(), end_time(), diff_time())})
+  
+  output$table <- renderTable({cbind(first_table(), start_time(), end_time(), diff_time())})
+  
+} # server slutter
 
-
- data_time_open  <- reactive({ gratia::evaluate_smooth(pt_data_open(),   's(time_s)')})
- data_time_closed <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 's(time_s)')})
-  
- open_times <- reactive({round(c(min(data_time_open()$time_s) , max(data_time_open()$time_s),
-                                 max(data_time_open()$time_s) - min(data_time_open()$time_s)),2)})
-  
-  closed_times <- reactive({round(c(min(data_time_closed()$time_s) , max(data_time_closed()$time_s),
-                                    max(data_time_closed()$time_s) - min(data_time_closed()$time_s)),2)})
-  
-  output$maksimum_open <- renderText({ paste0("Open - Start: ", as.character(open_times()[1]), " Slut: ",
-                                              as.character(open_times()[2]), " Diff: ", as.character(open_times()[3]))
-    })
-  
-  output$maksimum_closed <- renderText({ paste0("CLOSED - Start: ", as.character(closed_times()[1]), " Slut: ",
-                                                as.character(closed_times()[2]), " Diff: ",
-                                                as.character(closed_times()[3])) })
-  
-}
-shinyApp(ui = ui, server = server)
-# https://shiny.rstudio.com/articles/layout-guide.html
-# https://www.youtube.com/watch?v=PHdIivFAq7Q
+OurApp <- shinyApp(ui = ui, server = server)
+runApp(OurApp)
 ```
+
