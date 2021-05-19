@@ -76,7 +76,7 @@ create_patient_preds <- function(ptopen, ptclosed){
 }
 
 
-stacked_plot <- function(io, ic, qo, qc){
+stacked_plot <- function(io, ic, qo, qc, patient_number = NULL){
   colnames(io)[3] <- "rel_index"
   colnames(ic)[3] <- "rel_index"
   colnames(qo)[3] <- "rel_index"
@@ -89,8 +89,10 @@ stacked_plot <- function(io, ic, qo, qc){
   viz <- ggplot(data=comb, aes(x=rel_index, y=est, group=indicator)) +
     geom_line(aes(color=indicator)) +
     facet_wrap(~ smooth) +
-    labs(y="Estimated effect on CVP",
-         x="Relative respiration/QRS index") +
+    labs(title = "The marginal effects of respiration and QRS, respectively, on CVP",
+         y="Estimated effect on CVP",
+         x="Relative respiration/QRS index",
+         color = "Time period") +
     theme(axis.title.y = element_text(margin = margin(t = 0, r = 15, b = 0, l = 0)))
   return(viz)
 }
@@ -104,12 +106,12 @@ create_contour_patient <- function(odata, cdata){
 }
 
 
-create_contour_viz <- function(gather_in_one, patient_number){
+create_contour_viz <- function(gather_in_one, patient_number = NULL){
   viz <- ggplot(gather_in_one, aes(qrs_rel_index, insp_rel_index, z = est)) +
     geom_raster(aes(fill = est)) +
     geom_contour(colour = "black") +
     scale_fill_gradientn(colours=c("#0000FFFF","#FFFFFFFF","#FF0000FF")) +
-      labs(title = paste0("Patient ", patient_number),
+      labs(title = "The marginal effect of the interaction term on CVP",
            y = "insp_rel_index",
            x = "qrs_rel_index",
            fill = "Estimated effect\non CVP") +
@@ -119,12 +121,12 @@ create_contour_viz <- function(gather_in_one, patient_number){
 }
 
 
-create_viz <- function(pred_both, patient_number){
+create_viz <- function(pred_both, patient_number = NULL){
     # a function that creates a visualization comparing closed and open predictions  
     viz <- ggplot(data = pred_both, aes(x=qrs_rel_index, y=CVP, group = insp_rel_index)) +
       geom_line(aes(color=insp_rel_index), size = 0.9) +
       scale_color_gradientn(colours = turbo(10)) +
-      labs(title = paste0("Patient ", patient_number),
+      labs(title = "Change in CVP as a function of QRS at selected respiration times",
            y = "CVP",
            x = "qrs_rel_index",
            colour = "Relative        \nrespiration index") +
@@ -265,8 +267,7 @@ server <- function(input, output) {
 
   # For snap plots
   preds <- reactive({create_patient_preds(pt_data_open(), pt_data_closed())})
-  snapplot <- reactive({create_viz(pred_both = preds(),
-                                   patient_number = toString(strtoi(str_sub(input$patient,-2))))})
+  snapplot <- reactive({create_viz(pred_both = preds())})
 
 
   # For stacked plot
@@ -280,7 +281,7 @@ server <- function(input, output) {
   data_closed_contour <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 'ti(qrs_rel_index,insp_rel_index)')})
   
   data_contour_patient <- reactive({ create_contour_patient(data_open_contour(), data_closed_contour())})
-  contour_samlet <- reactive({create_contour_viz(data_contour_patient(), toString(strtoi(str_sub(input$patient,-2))))})
+  contour_samlet <- reactive({create_contour_viz(data_contour_patient())})
   
 
   
