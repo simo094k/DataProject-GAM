@@ -19,6 +19,7 @@ library(data.table)
 library(readr)
 library(dygraphs)
 library(dplyr)
+library(ggpubr)
 library(gridExtra)
 ```
 
@@ -75,25 +76,33 @@ create_patient_preds <- function(ptopen, ptclosed){
 }
 
 
-create_viz <- function(pred_both, patient_number){
-    # a function that creates a visualization comparing closed and open predictions  
-    viz <- ggplot(data = pred_both, aes(x=qrs_rel_index, y=CVP, group = insp_rel_index)) +
-    geom_line(aes(color=insp_rel_index), size = 0.9) +
-    scale_color_gradientn(colours = turbo(10)) +
-    labs(title = paste0("Patient ", patient_number),
-         y = "CVP",
-         x = "qrs_rel_index") +
-    facet_wrap(~ indicator)
-    return(viz)
+stacked_plot <- function(io, ic, qo, qc){
+  colnames(io)[3] <- "rel_index"
+  colnames(ic)[3] <- "rel_index"
+  colnames(qo)[3] <- "rel_index"
+  colnames(qc)[3] <- "rel_index"
+  
+  comb <- cbind(indicator=c(rep("open_chest", nrow(io)),
+                            rep("closed_chest", nrow(ic))),
+                both <- rbind(io, ic, qo, qc))
+
+  viz <- ggplot(data=comb, aes(x=rel_index, y=est, group=indicator)) +
+    geom_line(aes(color=indicator)) +
+    facet_wrap(~ smooth) +
+    labs(y="Estimated effect on CVP",
+         x="Relative respiration/QRS index") +
+    theme(axis.title.y = element_text(margin = margin(t = 0, r = 15, b = 0, l = 0)))
+  return(viz)
 }
 
 
-create_contour_patient <- function(open_data, closed_data){
-  gather_in_one <- rbind(open_data, closed_data)
-  gather_in_one$indicator <- cbind(c(rep("open_chest", nrow(open_data)),
-                   rep("closed_chest", nrow(closed_data))))
+create_contour_patient <- function(odata, cdata){
+  gather_in_one <- rbind(odata, cdata)
+  gather_in_one$indicator <- cbind(c(rep("open_chest", nrow(odata)),
+                                     rep("closed_chest", nrow(cdata))))
   return(gather_in_one)
 }
+
 
 create_contour_viz <- function(gather_in_one, patient_number){
   viz <- ggplot(gather_in_one, aes(qrs_rel_index, insp_rel_index, z = est)) +
@@ -102,11 +111,27 @@ create_contour_viz <- function(gather_in_one, patient_number){
     scale_fill_gradientn(colours=c("#0000FFFF","#FFFFFFFF","#FF0000FF")) +
       labs(title = paste0("Patient ", patient_number),
            y = "insp_rel_index",
-           x = "qrs_rel_index") +
-      facet_wrap(~ indicator)
+           x = "qrs_rel_index",
+           fill = "Estimated effect\non CVP") +
+      facet_wrap(~ indicator) +
+    theme(axis.title.y = element_text(margin = margin(t = 0, r = 5, b = 0, l = 0)))
   return(viz)
 }
 
+
+create_viz <- function(pred_both, patient_number){
+    # a function that creates a visualization comparing closed and open predictions  
+    viz <- ggplot(data = pred_both, aes(x=qrs_rel_index, y=CVP, group = insp_rel_index)) +
+      geom_line(aes(color=insp_rel_index), size = 0.9) +
+      scale_color_gradientn(colours = turbo(10)) +
+      labs(title = paste0("Patient ", patient_number),
+           y = "CVP",
+           x = "qrs_rel_index",
+           colour = "Relative        \nrespiration index") +
+      facet_wrap(~ indicator) +
+      theme(axis.title.y = element_text(margin = margin(t = 0, r = 15, b = 0, l = 0)))
+    return(viz)
+}
 
 
 give_it_center <- function(data_set, center = 50){
@@ -138,8 +163,6 @@ give_it_center <- function(data_set, center = 50){
   }
   return(data_set)
 }
-
-
 ```
 
 Testing area:
@@ -177,10 +200,6 @@ stackedplotINSP <- ggplot() +
 
 ```
 
-
-```{r}
-test <- give_it_center(gratia::evaluate_smooth(pt_data_open,'s(insp_rel_index)'),center_open)
-```
 
 
 Shiny below:
@@ -245,60 +264,31 @@ server <- function(input, output) {
   pt_data_closed <- reactive({readRDS(patient_path_closed(), refhook = NULL) })
 
   # For snap plots
-  preds <- reactive({create_patient_preds(ptopen = pt_data_open(), ptclosed = pt_data_closed())})
+  preds <- reactive({create_patient_preds(pt_data_open(), pt_data_closed())})
   snapplot <- reactive({create_viz(pred_both = preds(),
                                    patient_number = toString(strtoi(str_sub(input$patient,-2))))})
 
-  # For contour plot
-  #kontur_open <- reactive({gratia::draw(pt_data_open(), select =3)})
-  
-  #kontur_closed <- reactive({gratia::draw(pt_data_closed(), select =3)})
-  
-  # For stacked INSP plot
-  stackedplotINSP <- reactive({ggplot() +
-    geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_open(),'s(insp_rel_index)'),input$center_open),
-              aes(insp_rel_index,est, colour="open")) +
-    geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_closed(),'s(insp_rel_index)'),input$center_closed),
-              aes(insp_rel_index,est, colour="closed")) +
-    scale_color_manual(values = c('open' = 'darkblue',
-                                  'closed' = 'red')) +
-    theme(legend.position = "none") +
-    ggtitle("INSP")})
 
-  # For stacked QRS plot    
-  stackedplotQRS <- reactive({ggplot() +
-    geom_line(data=gratia::evaluate_smooth(pt_data_open(),'s(qrs_rel_index)'),
-              aes(qrs_rel_index,est, colour="open")) +
-    geom_line(data=gratia::evaluate_smooth(pt_data_closed(),'s(qrs_rel_index)'),
-              aes(qrs_rel_index,est, colour="closed")) +
-    scale_color_manual(values = c('open' = 'darkblue',
-                                  'closed' = 'red')) +
-    labs(color = 'Status') +
-    ggtitle("QRS")})
-  
+  # For stacked plot
+  stackedp <- reactive({stacked_plot(give_it_center(gratia::evaluate_smooth(pt_data_open(),'s(insp_rel_index)'),input$center_open),
+                                     give_it_center(gratia::evaluate_smooth(pt_data_closed(),'s(insp_rel_index)'),input$center_closed),
+                                     gratia::evaluate_smooth(pt_data_open(),'s(qrs_rel_index)'),
+                                     gratia::evaluate_smooth(pt_data_closed(),'s(qrs_rel_index)'))})
   
   # For contour-plots
   data_open_contour <- reactive({ gratia::evaluate_smooth(pt_data_open(), 'ti(qrs_rel_index,insp_rel_index)')})
   data_closed_contour <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 'ti(qrs_rel_index,insp_rel_index)')})
   
   data_contour_patient <- reactive({ create_contour_patient(data_open_contour(), data_closed_contour())})
-  contour_samlet <- reactive({create_contour_viz(data_contour_patient(), input$patient)})
+  contour_samlet <- reactive({create_contour_viz(data_contour_patient(), toString(strtoi(str_sub(input$patient,-2))))})
   
 
   
   output$samlet_plots <- renderPlot({
-#    pt <- list("ptopen" = pt_data_open(), "ptclosed" = pt_data_closed())
-#    create_viz(pred_both = preds, patient_number = toString(strtoi(str_sub(input$patient,-2))))
-#    testp <- qplot(rnorm(500),fill=I("red"),binwidth=0.2,main="plotgraph1")
-    plotmatrix <- rbind(c(1,2),
-                        c(3,3),
-                        c(4,4))
-    plotlist <- list(stackedplotINSP(),stackedplotQRS(),snapplot(), contour_samlet())
-#    wtlist <- c(input$wt1,input$wt2,input$wt3)
-     # remove the null plots from ptlist and wtlist
-#    to_delete <- !sapply(ptlist,is.null)
-#    ptlist <- ptlist[to_delete] 
-#    wtlist <- wtlist[to_delete]
+    plotmatrix <- rbind(c(1,1),
+                        c(2,2),
+                        c(3,3))
+    plotlist <- list(stackedp(), contour_samlet(), snapplot())
     if (length(plotlist)==0) return(NULL)
     grid.arrange(grobs=plotlist, layout_matrix = plotmatrix)#nrow=length(plotlist))
     
