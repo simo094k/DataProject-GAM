@@ -87,7 +87,7 @@ stacked_plot <- function(io, ic, qo, qc, patient_number = NULL){
                 both <- rbind(io, ic, qo, qc))
 
   viz <- ggplot(data=comb, aes(x=rel_index, y=est, group=indicator)) +
-    geom_line(aes(color=indicator)) +
+    geom_line(aes(color=indicator), size = 0.9) +
     facet_wrap(~ smooth) +
     labs(title = "The marginal effects of respiration and QRS, respectively, on CVP",
          y="Estimated effect on CVP",
@@ -112,8 +112,8 @@ create_contour_viz <- function(gather_in_one, patient_number = NULL){
     geom_contour(colour = "black") +
     scale_fill_gradientn(colours=c("#0000FFFF","#FFFFFFFF","#FF0000FF")) +
       labs(title = "The marginal effect of the interaction term on CVP",
-           y = "insp_rel_index",
-           x = "qrs_rel_index",
+           y = "Relative respiration index",
+           x = "Relative QRS index",
            fill = "Estimated effect\non CVP") +
       facet_wrap(~ indicator) +
     theme(axis.title.y = element_text(margin = margin(t = 0, r = 5, b = 0, l = 0)))
@@ -126,9 +126,9 @@ create_viz <- function(pred_both, patient_number = NULL){
     viz <- ggplot(data = pred_both, aes(x=qrs_rel_index, y=CVP, group = insp_rel_index)) +
       geom_line(aes(color=insp_rel_index), size = 0.9) +
       scale_color_gradientn(colours = turbo(10)) +
-      labs(title = "Change in CVP as a function of QRS at selected respiration times",
+      labs(title = "Change in CVP as a function of relative QRS index at selected relative respiration index times",
            y = "CVP",
-           x = "qrs_rel_index",
+           x = "Relative QRS index",
            colour = "Relative        \nrespiration index") +
       facet_wrap(~ indicator) +
       theme(axis.title.y = element_text(margin = margin(t = 0, r = 15, b = 0, l = 0)))
@@ -225,14 +225,14 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
         sidebarPanel(h3("Inputs"),
                      selectInput("patient", label = "Select patient", 
                                  choices = list(patient_list = patient_list),  selected = "pt02"),
-                     sliderInput("center_open", label = "Highest point center open",
+                     sliderInput("center_closed", label = "Index placement of largest respiration effect during closed chest",
                                  min = 1, max = 100, value = 50),
-                     sliderInput("center_closed", label = "Highest point center closed",
+                     sliderInput("center_open", label = "Index placement of largest respiration effect during open chest",
                                  min = 1, max = 100, value = 50)),
 
                   
         # Main panel for displaying outputs
-        mainPanel(plotOutput(outputId = "samlet_plots", height = "800px"), tableOutput("oversigt_tabel"))
+        mainPanel(plotOutput(outputId = "samlet_plots", height = "1200px"), tableOutput("oversigt_tabel"))
     ), 
   
     # Second page begins
@@ -270,13 +270,13 @@ server <- function(input, output) {
   snapplot <- reactive({create_viz(pred_both = preds())})
 
 
-  # For stacked plot
+  # For stacked plots
   stackedp <- reactive({stacked_plot(give_it_center(gratia::evaluate_smooth(pt_data_open(),'s(insp_rel_index)'),input$center_open),
                                      give_it_center(gratia::evaluate_smooth(pt_data_closed(),'s(insp_rel_index)'),input$center_closed),
                                      gratia::evaluate_smooth(pt_data_open(),'s(qrs_rel_index)'),
                                      gratia::evaluate_smooth(pt_data_closed(),'s(qrs_rel_index)'))})
   
-  # For contour-plots
+  # For contour plots
   data_open_contour <- reactive({ gratia::evaluate_smooth(pt_data_open(), 'ti(qrs_rel_index,insp_rel_index)')})
   data_closed_contour <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 'ti(qrs_rel_index,insp_rel_index)')})
   
@@ -302,11 +302,14 @@ server <- function(input, output) {
   data_time_closed <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 's(time_s)')})
   
   
-  first_table <- reactive({subset(table_values, Model %in% c(paste0(input$patient, "OPEN.rds", sep=""),paste0(input$patient, "CLOSED.rds", sep="")), select = c("Model", "CV_MAE", "Model_MAE")) })
+  first_table <- reactive({subset(table_values, Model %in% c(paste0(input$patient, "OPEN.rds", sep=""),
+                                                             paste0(input$patient, "CLOSED.rds", sep="")),
+                                  select = c("Model", "CV_MAE", "Model_MAE")) })
   
   start_time <- reactive({ c(min(data_time_closed()$time_s), min(data_time_open()$time_s)) })
   end_time <- reactive({ c(max(data_time_closed()$time_s), max(data_time_open()$time_s)) })
-  diff_time <- reactive({ c(max(data_time_closed()$time_s) - min(data_time_closed()$time_s), max(data_time_open()$time_s) - min(data_time_open()$time_s)) })
+  diff_time <- reactive({ c(max(data_time_closed()$time_s) - min(data_time_closed()$time_s), 
+                            max(data_time_open()$time_s) - min(data_time_open()$time_s)) })
   
   #final_table <- reactive({cbind(first_table(), start_time(), end_time(), diff_time())})
   
