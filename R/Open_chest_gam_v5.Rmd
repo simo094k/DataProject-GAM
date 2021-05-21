@@ -195,6 +195,16 @@ move_kontour <- function(data_contour, input_scale_open, input_scale_closed){
   return(data_contour)
 }
 
+create_dygraphs <- function(closed, open){
+  res1 <- dygraph_gam(closed, resid=TRUE)
+  res1$x$group <- NULL
+  dy_graph <- list(
+  res1,
+  dygraph_gam(open, resid=TRUE)
+)
+  return(dy_graph)
+}
+
 ```
 
 Testing area:
@@ -266,25 +276,15 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
         # Main panel for displaying outputs
         mainPanel(plotOutput(outputId = "samlet_plots", height = "1200px"), tableOutput("oversigt_tabel"))
     ), 
-  
-    # Second page begins
-    tabPanel("Info", "Created by Andreas, Casper, Mads & Simon"),
     
-    # Third page begins
-    tabPanel("QRS og INSP",
-             sidebarPanel(h3("Inputs"),
-                  sliderInput("center_open", label = "Highest point center open",
-                                 min = 1, max = 100, value = 50),
-                  sliderInput("center_closed", label = "Highest point center closed",
-                                 min = 1, max = 100, value = 50)
+    # Second page begins
+    tabPanel("Residuals",
+             sidebarPanel(h3("Description"),
+                           htmlOutput("text2")),
+             mainPanel(htmlOutput("dygraph1"))
              ),
-             
-             mainPanel( plotOutput(outputId = "insp_plot")),
-                 verbatimTextOutput("maksimum_closed"),
-                 verbatimTextOutput("maksimum_open"),
-                 #plotOutput(outputId = "side_by_side_contour")
-                 
-             )
+    # Third page begins
+    tabPanel("Info", "Created by Andreas, Casper, Mads & Simon")
   )
 )
 
@@ -339,6 +339,15 @@ server <- function(input, output) {
   })# renderPlot ends here
   
   
+  # Dygraphs
+  dy_graphs <- reactive({create_dygraphs(pt_data_closed(), pt_data_open())})
+  
+  output$dygraph1 <- renderUI({htmltools::browsable(htmltools::tagList(dy_graphs()))})
+  # Dygraph render ends her
+  
+  output$text2 <- renderUI({
+                HTML("On this page you can see observed values, the models predicted values, and residuals.")
+            }) # Render Text for second page
   
   ## Dette er TABLE!!
   data_time_open  <- reactive({ gratia::evaluate_smooth(pt_data_open(),   's(time_s)')})
@@ -349,6 +358,8 @@ server <- function(input, output) {
                                                              paste0(input$patient, "CLOSED.rds", sep="")),
                                   select = c("Model", "CV_MAE", "Model_MAE")) })
   
+  intercept <- reactive({c(pt_data_open()[["coefficients"]][1],pt_data_closed()[["coefficients"]][1] )  })
+  
   start_time <- reactive({ c(min(data_time_closed()$time_s), min(data_time_open()$time_s)) })
   end_time <- reactive({ c(max(data_time_closed()$time_s), max(data_time_open()$time_s)) })
   diff_time <- reactive({ c(max(data_time_closed()$time_s) - min(data_time_closed()$time_s), 
@@ -356,7 +367,7 @@ server <- function(input, output) {
   
   #final_table <- reactive({cbind(first_table(), start_time(), end_time(), diff_time())})
   
-  output$table <- renderTable({t(cbind(first_table(), start_time(), end_time(), diff_time()))}, rownames=TRUE, colnames=FALSE)
+  output$table <- renderTable({t(cbind(first_table(), start_time(), end_time(), diff_time(), intercept()))}, rownames=TRUE, colnames=FALSE)
   
 } # server slutter
 
