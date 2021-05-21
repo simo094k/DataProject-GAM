@@ -228,7 +228,9 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
                      sliderInput("center_closed", label = "Index placement of largest respiration effect during closed chest",
                                  min = 1, max = 100, value = 50),
                      sliderInput("center_open", label = "Index placement of largest respiration effect during open chest",
-                                 min = 1, max = 100, value = 50)),
+                                 min = 1, max = 100, value = 50),
+                     tableOutput('table'),
+                     tags$style(type="text/css", "#table tr td:first-child {font-weight:bold;}")),
 
                   
         # Main panel for displaying outputs
@@ -247,7 +249,7 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
                                  min = 1, max = 100, value = 50)
              ),
              
-             mainPanel( plotOutput(outputId = "insp_plot"), tableOutput('table')),
+             mainPanel( plotOutput(outputId = "insp_plot")),
                  verbatimTextOutput("maksimum_closed"),
                  verbatimTextOutput("maksimum_open"),
                  #plotOutput(outputId = "side_by_side_contour")
@@ -313,7 +315,7 @@ server <- function(input, output) {
   
   #final_table <- reactive({cbind(first_table(), start_time(), end_time(), diff_time())})
   
-  output$table <- renderTable({cbind(first_table(), start_time(), end_time(), diff_time())})
+  output$table <- renderTable({t(cbind(first_table(), start_time(), end_time(), diff_time()))}, rownames=TRUE, colnames=FALSE)
   
 } # server slutter
 
