@@ -25,7 +25,7 @@ library(splines)
 ```{r}
 #resp_data <- readRDS("../Datasets/thoracotomy_waveforms/comb_ventilation_data.RDS")
 dat_frame <- data.frame(matrix(ncol = 5, nrow = 0))
-x <- c("Model", "Model_BIC", "LM_BIC", "Poly1_BIC", "Poly2_BIC")
+x <- c("Model", "Actual Model BIC", "LM BIC", "Poly1 BIC", "Poly2 BIC")
 colnames(dat_frame) <- x
 qwerty <- 1
 df <- list.files(pattern = ".rds")
@@ -82,7 +82,7 @@ bic_model[5,2] # GAM: [1,2] = -9353. LM1: [2,2] = 7907
 ```{r}
 #resp_data <- readRDS("../Datasets/thoracotomy_waveforms/comb_ventilation_data.RDS")
 dat_frame <- data.frame(matrix(ncol = 5, nrow = 0))
-x <- c("Model", "Model_MAE", "LM_MAE", "Poly1_MAE", "Poly2_MAE")
+x <- c("Model", "Actual Model MAE", "LM MAE", "Poly1 MAE", "Poly2 MAE")
 colnames(dat_frame) <- x
 qwerty <- 1
 df <- list.files(pattern = ".rds")
