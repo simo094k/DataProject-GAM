@@ -252,6 +252,8 @@ knitr::opts_chunk$set(
   comment = "#>"
 )
 table_values <- read_csv("../GAM_RDS/CV_MAE.csv") 
+bic_values <- read_csv("../GAM_RDS/CV_BIC.csv") 
+mae_values <- read_csv("../GAM_RDS/CV_MAE_BIC.csv") 
 
 patient_list <- paste('pt', str_pad(seq(1,61), 2, pad = "0"), sep = "")
 
@@ -270,7 +272,11 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
                      sliderInput("center_open", label = "Index placement of largest respiration effect during open chest",
                                  min = 1, max = 100, value = 50),
                      tableOutput('table'),
-                     tags$style(type="text/css", "#table tr td:first-child {font-weight:bold;}")),
+                    # tags$style(type="text/css", "#table tr td:first-child {font-weight:bold;}")),
+                    tags$style(type="text/css", "#table tr:first-child, td:first-child { font-weight: bold;}"),
+                    tags$style(type="text/css", "#table tr:nth-child(1), tr:nth-child(5), tr:nth-child(10)  { border-bottom: solid 2px black;}"),
+                    htmlOutput("text3")),
+
 
                   
         # Main panel for displaying outputs
@@ -283,6 +289,7 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
                            htmlOutput("text2")),
              mainPanel(htmlOutput("dygraph1"))
              ),
+  
     # Third page begins
     tabPanel("Info", "Created by Andreas, Casper, Mads & Simon")
   )
@@ -345,7 +352,7 @@ server <- function(input, output) {
   output$dygraph1 <- renderUI({htmltools::browsable(htmltools::tagList(dy_graphs()))})
   # Dygraph render ends her
   
-  output$text2 <- renderUI({
+  output$text2 <- renderText({
                 HTML("On this page you can see observed values, the models predicted values, and residuals.")
             }) # Render Text for second page
   
@@ -354,9 +361,26 @@ server <- function(input, output) {
   data_time_closed <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 's(time_s)')})
   
   
-  first_table <- reactive({subset(table_values, Model %in% c(paste0(input$patient, "OPEN.rds", sep=""),
+  model_table <- reactive({subset(table_values, Model %in% c(paste0(input$patient, "OPEN.rds", sep=""),
                                                              paste0(input$patient, "CLOSED.rds", sep="")),
-                                  select = c("Model", "CV_MAE", "Model_MAE")) })
+                                  select = c("Model")) })
+  
+  cv_mae_table <- reactive({subset(table_values, Model %in% c(paste0(input$patient, "OPEN.rds", sep=""),
+                                                             paste0(input$patient, "CLOSED.rds", sep="")),
+                                  select = c("CV_MAE")) })
+  
+  mae_table <- reactive({subset(mae_values, Model %in% c(paste0(input$patient, "OPEN.rds", sep=""),
+                                                             paste0(input$patient, "CLOSED.rds", sep="")),
+                                  select = c("Actual Model MAE")) })
+  
+ mae_table2 <- reactive({subset(mae_values, Model %in% c(paste0(input$patient, "OPEN.rds", sep=""),
+                                                             paste0(input$patient, "CLOSED.rds", sep="")),
+                                  select = c("LM MAE","Poly1 MAE","Poly2 MAE")) })
+  
+  bic_table <- reactive({subset(bic_values, Model %in% c(paste0(input$patient, "OPEN.rds", sep=""),
+                                                             paste0(input$patient, "CLOSED.rds", sep="")),
+                                  select = c("Actual Model BIC","LM BIC","Poly1 BIC","Poly2 BIC")) })
+  
   
   intercept <- reactive({c(pt_data_open()[["coefficients"]][1],pt_data_closed()[["coefficients"]][1] )  })
   
@@ -367,7 +391,21 @@ server <- function(input, output) {
   
   #final_table <- reactive({cbind(first_table(), start_time(), end_time(), diff_time())})
   
-  output$table <- renderTable({t(cbind(first_table(), start_time(), end_time(), diff_time(), intercept()))}, rownames=TRUE, colnames=FALSE)
+  
+  output$table <- renderTable({t(cbind(model_table(), start_time(), end_time(), diff_time(), intercept(), mae_table(), cv_mae_table(), mae_table2(), bic_table()))}, rownames=TRUE, colnames=FALSE)
+  
+  output$text3 <- renderUI({
+                str1 <- "LM: linear Regression Model "
+                str11 <- "CVP = &beta;&#95;0 (qrs_rel_index &times; insp_rel_index) + &beta;&#95;1 qrs_rel_index + &beta;&#95;2 insp_rel_index + &beta;&#95;3 time + &epsilon;."
+                str111 <- ""
+                str2 <- "Poly1: Polynomial Regression Model 1"
+                str22 <- "CVP = &beta;&#95;0 qrs_rel_index^12 + &beta;&#95;1 insp_rel_index^8 + &beta;&#95;2 time^3 + &epsilon;."
+                str222 <- ""
+                str3 <- "Poly 2: Polynomial Regression Model 2"
+                str33 <- "CVP = &beta;&#95;0 qrs_rel_index^23 + &beta;&#95;1 insp_rel_index^23 + &beta;&#95;2 time^23 + &epsilon;."
+                str333 <- ""
+                HTML(paste(str1, str11, str111, str2, str22, str222, str3, str33, str333, sep = '<br/>') )
+            })   
   
 } # server slutter
 
