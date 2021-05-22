@@ -19,6 +19,7 @@ library(data.table)
 library(readr)
 library(dygraphs)
 library(dplyr)
+library(ggpubr)
 library(gridExtra)
 ```
 
@@ -75,38 +76,64 @@ create_patient_preds <- function(ptopen, ptclosed){
 }
 
 
-create_viz <- function(pred_both, patient_number){
-    # a function that creates a visualization comparing closed and open predictions  
-    viz <- ggplot(data = pred_both, aes(x=qrs_rel_index, y=CVP, group = insp_rel_index)) +
-    geom_line(aes(color=insp_rel_index), size = 0.9) +
-    scale_color_gradientn(colours = turbo(10)) +
-    labs(title = paste0("Patient ", patient_number),
-         y = "CVP",
-         x = "qrs_rel_index") +
-    facet_wrap(~ indicator)
-    return(viz)
+stacked_plot <- function(io, ic, qo, qc, patient_number = NULL){
+  colnames(io)[3] <- "rel_index"
+  colnames(ic)[3] <- "rel_index"
+  colnames(qo)[3] <- "rel_index"
+  colnames(qc)[3] <- "rel_index"
+  
+  comb <- cbind(indicator=c(rep("open_chest", nrow(io)),
+                            rep("closed_chest", nrow(ic))),
+                both <- rbind(io, ic, qo, qc))
+
+  viz <- ggplot(data=comb, aes(x=rel_index, y=est, group=indicator)) +
+    geom_line(aes(color=indicator), size = 0.9) +
+    facet_wrap(~ smooth) +
+    labs(title = "The marginal effects of respiration and QRS, respectively, on CVP",
+         y="Estimated effect on CVP",
+         x="Relative respiration/QRS index",
+         color = "Time period") +
+    theme(axis.title.y = element_text(margin = margin(t = 0, r = 15, b = 0, l = 0)))
+  return(viz)
 }
 
 
-create_contour_patient <- function(open_data, closed_data){
-  gather_in_one <- rbind(open_data, closed_data)
-  gather_in_one$indicator <- cbind(c(rep("open_chest", nrow(open_data)),
-                   rep("closed_chest", nrow(closed_data))))
+create_contour_patient <- function(odata, cdata){
+  gather_in_one <- rbind(odata, cdata)
+  gather_in_one$indicator <- cbind(c(rep("open_chest", nrow(odata)),
+                                     rep("closed_chest", nrow(cdata))))
   return(gather_in_one)
 }
 
-create_contour_viz <- function(gather_in_one, patient_number){
+
+create_contour_viz <- function(gather_in_one, patient_number = NULL){
   viz <- ggplot(gather_in_one, aes(qrs_rel_index, insp_rel_index, z = est)) +
     geom_raster(aes(fill = est)) +
     geom_contour(colour = "black") +
     scale_fill_gradientn(colours=c("#0000FFFF","#FFFFFFFF","#FF0000FF")) +
-      labs(title = paste0("Patient ", patient_number),
-           y = "insp_rel_index",
-           x = "qrs_rel_index") +
-      facet_wrap(~ indicator)
+      labs(title = "Effect of interaction term between respiration and QRS on CVP",
+           y = "Relative respiration index",
+           x = "Relative QRS index",
+           fill = "Estimated effect\non CVP") +
+      facet_wrap(~ indicator) +
+    theme(axis.title.y = element_text(margin = margin(t = 0, r = 5, b = 0, l = 0)))
   return(viz)
 }
 
+
+create_viz <- function(pred_both, patient_number = NULL){
+    # a function that creates a visualization comparing closed and open predictions  
+    viz <- ggplot(data = pred_both, aes(x=qrs_rel_index, y=CVP, group = insp_rel_index)) +
+      geom_line(aes(color=insp_rel_index), size = 0.9) +
+      scale_color_gradientn(colours = turbo(10)) +
+      labs(title = "Change in CVP as a function of relative QRS index at selected relative respiration index times",
+           y = "CVP",
+           x = "Relative QRS index",
+           colour = "Relative        \nrespiration index") +
+      facet_wrap(~ indicator) +
+      theme(axis.title.y = element_text(margin = margin(t = 0, r = 15, b = 0, l = 0)))
+    return(viz)
+}
 
 
 give_it_center <- function(data_set, center = 50){
@@ -138,7 +165,45 @@ give_it_center <- function(data_set, center = 50){
   }
   return(data_set)
 }
+insp_add_sub_val <- function(data_set, center = 50){
+  if (which.max(data_set$est) > center ){
+    biggest <- which.max(data_set$est)
+    value_to_subtract <- data_set$insp_rel_index[center] - data_set$insp_rel_index[biggest]
+    return(value_to_subtract)
+  }else{
+    smallest <- which.max(data_set$est)
+    value_to_add <- data_set$insp_rel_index[center] - data_set$insp_rel_index[smallest]
+    return(value_to_add)
+  }
+}
 
+insp_shift_data <- function(data_set, shift_value_open, shift_value_closed){
+  data_set <- mutate(data_set, insp_rel_index = ifelse(indicator=="open_chest",
+                                                       (data_set$insp_rel_index + shift_value_open) %% 1,
+                                                       (data_set$insp_rel_index + shift_value_closed) %% 1))
+  
+#  data_set$insp_rel_index <- (data_set$insp_rel_index + shift_value_open) %% 1
+  return(data_set)
+}
+
+move_kontour <- function(data_contour, input_scale_open, input_scale_closed){
+  data_contour <- mutate(data_contour,
+                         est = c(est[((100 - input_scale_open) * 100 + 1):10000],
+                                 est[1:((100 - input_scale_open) * 100)],
+                                 est[((100 - input_scale_closed) * 100 + 10001):20000],
+                                 est[10001:((100 - input_scale_closed) * 100 + 10000)]))
+  return(data_contour)
+}
+
+create_dygraphs <- function(closed, open){
+  res1 <- dygraph_gam(closed, resid=TRUE)
+  res1$x$group <- NULL
+  dy_graph <- list(
+  res1,
+  dygraph_gam(open, resid=TRUE)
+)
+  return(dy_graph)
+}
 
 ```
 
@@ -178,10 +243,6 @@ stackedplotINSP <- ggplot() +
 ```
 
 
-```{r}
-test <- give_it_center(gratia::evaluate_smooth(pt_data_open,'s(insp_rel_index)'),center_open)
-```
-
 
 Shiny below:
 
@@ -204,34 +265,26 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
         sidebarPanel(h3("Inputs"),
                      selectInput("patient", label = "Select patient", 
                                  choices = list(patient_list = patient_list),  selected = "pt02"),
-                     sliderInput("center_open", label = "Highest point center open",
+                     sliderInput("center_closed", label = "Index placement of largest respiration effect during closed chest",
                                  min = 1, max = 100, value = 50),
-                     sliderInput("center_closed", label = "Highest point center closed",
-                                 min = 1, max = 100, value = 50)),
+                     sliderInput("center_open", label = "Index placement of largest respiration effect during open chest",
+                                 min = 1, max = 100, value = 50),
+                     tableOutput('table'),
+                     tags$style(type="text/css", "#table tr td:first-child {font-weight:bold;}")),
 
                   
         # Main panel for displaying outputs
-        mainPanel(plotOutput(outputId = "samlet_plots", height = "800px"), tableOutput("oversigt_tabel"))
+        mainPanel(plotOutput(outputId = "samlet_plots", height = "1200px"), tableOutput("oversigt_tabel"))
     ), 
-  
-    # Second page begins
-    tabPanel("Info", "Created by Andreas, Casper, Mads & Simon"),
     
-    # Third page begins
-    tabPanel("QRS og INSP",
-             sidebarPanel(h3("Inputs"),
-                  sliderInput("center_open", label = "Highest point center open",
-                                 min = 1, max = 100, value = 50),
-                  sliderInput("center_closed", label = "Highest point center closed",
-                                 min = 1, max = 100, value = 50)
+    # Second page begins
+    tabPanel("Residuals",
+             sidebarPanel(h3("Description"),
+                           htmlOutput("text2")),
+             mainPanel(htmlOutput("dygraph1"))
              ),
-             
-             mainPanel( plotOutput(outputId = "insp_plot"), tableOutput('table')),
-                 verbatimTextOutput("maksimum_closed"),
-                 verbatimTextOutput("maksimum_open"),
-                 #plotOutput(outputId = "side_by_side_contour")
-                 
-             )
+    # Third page begins
+    tabPanel("Info", "Created by Andreas, Casper, Mads & Simon")
   )
 )
 
@@ -244,82 +297,77 @@ server <- function(input, output) {
   patient_path_closed <- reactive({paste("../GAM_RDS/", input$patient, "CLOSED.rds",sep="") })
   pt_data_closed <- reactive({readRDS(patient_path_closed(), refhook = NULL) })
 
+  open_add_sub_value <- reactive({insp_add_sub_val(gratia::evaluate_smooth(pt_data_open(),'s(insp_rel_index)'),
+                                                   input$center_open)})
+  closed_add_sub_value <- reactive({insp_add_sub_val(gratia::evaluate_smooth(pt_data_closed(),'s(insp_rel_index)'), 
+                                                     input$center_closed)})
+  
   # For snap plots
-  preds <- reactive({create_patient_preds(ptopen = pt_data_open(), ptclosed = pt_data_closed())})
-  snapplot <- reactive({create_viz(pred_both = preds(),
-                                   patient_number = toString(strtoi(str_sub(input$patient,-2))))})
+  preds <- reactive({insp_shift_data(create_patient_preds(pt_data_open(), pt_data_closed()),
+                                     open_add_sub_value(), 
+                                     closed_add_sub_value())})
+  snapplot <- reactive({create_viz(pred_both = preds())})
 
-  # For contour plot
-  #kontur_open <- reactive({gratia::draw(pt_data_open(), select =3)})
-  
-  #kontur_closed <- reactive({gratia::draw(pt_data_closed(), select =3)})
-  
-  # For stacked INSP plot
-  stackedplotINSP <- reactive({ggplot() +
-    geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_open(),'s(insp_rel_index)'),input$center_open),
-              aes(insp_rel_index,est, colour="open")) +
-    geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_closed(),'s(insp_rel_index)'),input$center_closed),
-              aes(insp_rel_index,est, colour="closed")) +
-    scale_color_manual(values = c('open' = 'darkblue',
-                                  'closed' = 'red')) +
-    theme(legend.position = "none") +
-    ggtitle("INSP")})
 
-  # For stacked QRS plot    
-  stackedplotQRS <- reactive({ggplot() +
-    geom_line(data=gratia::evaluate_smooth(pt_data_open(),'s(qrs_rel_index)'),
-              aes(qrs_rel_index,est, colour="open")) +
-    geom_line(data=gratia::evaluate_smooth(pt_data_closed(),'s(qrs_rel_index)'),
-              aes(qrs_rel_index,est, colour="closed")) +
-    scale_color_manual(values = c('open' = 'darkblue',
-                                  'closed' = 'red')) +
-    labs(color = 'Status') +
-    ggtitle("QRS")})
+  # For stacked plots
+  stackedp <- reactive({stacked_plot(
+    give_it_center(gratia::evaluate_smooth(pt_data_open(),'s(insp_rel_index)'),input$center_open),
+    give_it_center(gratia::evaluate_smooth(pt_data_closed(),'s(insp_rel_index)'),input$center_closed),
+    gratia::evaluate_smooth(pt_data_open(),'s(qrs_rel_index)'),
+    gratia::evaluate_smooth(pt_data_closed(),'s(qrs_rel_index)'))})
   
-  
-  # For contour-plots
+  # For contour plots
   data_open_contour <- reactive({ gratia::evaluate_smooth(pt_data_open(), 'ti(qrs_rel_index,insp_rel_index)')})
   data_closed_contour <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 'ti(qrs_rel_index,insp_rel_index)')})
   
   data_contour_patient <- reactive({ create_contour_patient(data_open_contour(), data_closed_contour())})
-  contour_samlet <- reactive({create_contour_viz(data_contour_patient(), input$patient)})
+  contour_samlet <- reactive({create_contour_viz(move_kontour(data_contour_patient(),
+                                                              input$center_open,
+                                                              input$center_closed),
+                                                 toString(strtoi(str_sub(input$patient,-2))))})
   
 
   
   output$samlet_plots <- renderPlot({
-#    pt <- list("ptopen" = pt_data_open(), "ptclosed" = pt_data_closed())
-#    create_viz(pred_both = preds, patient_number = toString(strtoi(str_sub(input$patient,-2))))
-#    testp <- qplot(rnorm(500),fill=I("red"),binwidth=0.2,main="plotgraph1")
-    plotmatrix <- rbind(c(1,2),
-                        c(3,3),
-                        c(4,4))
-    plotlist <- list(stackedplotINSP(),stackedplotQRS(),snapplot(), contour_samlet())
-#    wtlist <- c(input$wt1,input$wt2,input$wt3)
-     # remove the null plots from ptlist and wtlist
-#    to_delete <- !sapply(ptlist,is.null)
-#    ptlist <- ptlist[to_delete] 
-#    wtlist <- wtlist[to_delete]
+    plotmatrix <- rbind(c(1,1),
+                        c(2,2),
+                        c(3,3))
+    plotlist <- list(stackedp(), contour_samlet(), snapplot())
     if (length(plotlist)==0) return(NULL)
     grid.arrange(grobs=plotlist, layout_matrix = plotmatrix)#nrow=length(plotlist))
     
   })# renderPlot ends here
   
   
+  # Dygraphs
+  dy_graphs <- reactive({create_dygraphs(pt_data_closed(), pt_data_open())})
+  
+  output$dygraph1 <- renderUI({htmltools::browsable(htmltools::tagList(dy_graphs()))})
+  # Dygraph render ends her
+  
+  output$text2 <- renderUI({
+                HTML("On this page you can see observed values, the models predicted values, and residuals.")
+            }) # Render Text for second page
   
   ## Dette er TABLE!!
   data_time_open  <- reactive({ gratia::evaluate_smooth(pt_data_open(),   's(time_s)')})
   data_time_closed <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 's(time_s)')})
   
   
-  first_table <- reactive({subset(table_values, Model %in% c(paste0(input$patient, "OPEN.rds", sep=""),paste0(input$patient, "CLOSED.rds", sep="")), select = c("Model", "CV_MAE", "Model_MAE")) })
+  first_table <- reactive({subset(table_values, Model %in% c(paste0(input$patient, "OPEN.rds", sep=""),
+                                                             paste0(input$patient, "CLOSED.rds", sep="")),
+                                  select = c("Model", "CV_MAE", "Model_MAE")) })
+  
+  intercept <- reactive({c(pt_data_open()[["coefficients"]][1],pt_data_closed()[["coefficients"]][1] )  })
   
   start_time <- reactive({ c(min(data_time_closed()$time_s), min(data_time_open()$time_s)) })
   end_time <- reactive({ c(max(data_time_closed()$time_s), max(data_time_open()$time_s)) })
-  diff_time <- reactive({ c(max(data_time_closed()$time_s) - min(data_time_closed()$time_s), max(data_time_open()$time_s) - min(data_time_open()$time_s)) })
+  diff_time <- reactive({ c(max(data_time_closed()$time_s) - min(data_time_closed()$time_s), 
+                            max(data_time_open()$time_s) - min(data_time_open()$time_s)) })
   
   #final_table <- reactive({cbind(first_table(), start_time(), end_time(), diff_time())})
   
-  output$table <- renderTable({cbind(first_table(), start_time(), end_time(), diff_time())})
+  output$table <- renderTable({t(cbind(first_table(), start_time(), end_time(), diff_time(), intercept()))}, rownames=TRUE, colnames=FALSE)
   
 } # server slutter
 
