@@ -27,7 +27,7 @@ library(gridExtra)
 Functions:
 
 ```{r}
-pt_range <- c(2, 3, 4) #seq(1,61) # insert the number of the patient you want to visualize
+#pt_range <- c(2, 3, 4) #seq(1,61) # insert the number of the patient you want to visualize
 
 # load_patient <- function(patient_number){
 #     # a function that loads GAMs in RDS file format using a specific nomenclature
@@ -98,6 +98,29 @@ stacked_plot <- function(io, ic, qo, qc, patient_number = NULL){
   return(viz)
 }
 
+stacked_diff_plot <- function(io, ic, qo, qc){
+  colnames(io)[3] <- "rel_index"
+  colnames(ic)[3] <- "rel_index"
+  colnames(qo)[3] <- "rel_index"
+  colnames(qc)[3] <- "rel_index"
+  
+  combo <- rbind(io, qo)
+  combo <- combo[order(combo$smooth,combo$rel_index),]
+  combc <- rbind(ic, qc)
+  combc <- combc[order(combc$smooth,combc$rel_index),]
+  
+  combo$est_diff <- combo$est - combc$est
+
+  viz <- ggplot(data=combo, aes(x=rel_index, y=est_diff)) +
+    geom_line(aes(), size = 0.9) +
+    facet_wrap(~ smooth) +
+    labs(title = "The difference in marginal effects (respiration and QRS) before and after thoractomy",
+         y="Effect during open chest minus effect during closed chest",
+         x="Relative respiration/QRS index") +
+    theme(axis.title.y = element_text(margin = margin(t = 0, r = 15, b = 0, l = 0)))
+  return(viz)
+}
+
 
 create_contour_patient <- function(odata, cdata){
   gather_in_one <- rbind(odata, cdata)
@@ -107,17 +130,43 @@ create_contour_patient <- function(odata, cdata){
 }
 
 
-create_contour_viz <- function(gather_in_one, patient_number = NULL){
-  viz <- ggplot(gather_in_one, aes(qrs_rel_index, insp_rel_index, z = est)) +
+move_contour <- function(data_contour, input_scale_open, input_scale_closed){
+  data_contour <- mutate(data_contour,
+                         est = c(est[((100 - input_scale_open) * 100 + 1):10000],
+                                 est[1:((100 - input_scale_open) * 100)],
+                                 est[((100 - input_scale_closed) * 100 + 10001):20000],
+                                 est[10001:((100 - input_scale_closed) * 100 + 10000)]))
+  return(data_contour)
+}
+
+
+create_contour_diff_data <- function(data_set){
+  data_set <- data_set[order(data_set$indicator, data_set$qrs_rel_index, data_set$insp_rel_index),]
+  new_diff_data <- data.frame(qrs_rel_index = data_set$qrs_rel_index[1:10000],
+                              insp_rel_index = data_set$insp_rel_index[1:10000],
+                              est = data_set$est[10001:20000] - data_set$est[1:10000], # open minus closed est
+                              indicator = rep("Difference", 10000))
+  return(new_diff_data)
+}
+
+
+create_contour_viz <- function(data_set,
+                               lab.title = "Effect of interaction term between respiration and QRS on CVP",
+                               lab.y = "Relative respiration index",
+                               lab.x = "Relative QRS index",
+                               lab.legend = "Estimated effect\non CVP",
+                               wrap = TRUE){
+  viz <- ggplot(data_set, aes(qrs_rel_index, insp_rel_index, z = est)) +
     geom_raster(aes(fill = est)) +
     geom_contour(colour = "black") +
     scale_fill_gradientn(colours=c("#0000FFFF","#FFFFFFFF","#FF0000FF")) +
-      labs(title = "Effect of interaction term between respiration and QRS on CVP",
-           y = "Relative respiration index",
-           x = "Relative QRS index",
-           fill = "Estimated effect\non CVP") +
-      facet_wrap(~ indicator) +
+      labs(title = lab.title,
+           y = lab.y,
+           x = lab.x,
+           fill = lab.legend) +
     theme(axis.title.y = element_text(margin = margin(t = 0, r = 5, b = 0, l = 0)))
+  if(wrap){
+    viz <- viz + facet_wrap(~ indicator)}
   return(viz)
 }
 
@@ -138,14 +187,10 @@ create_viz <- function(pred_both, patient_number = NULL){
 
 
 give_it_center <- function(data_set, center = 50){
-  
   if (which.max(data_set$est) > center ){
     biggest <- which.max(data_set$est)
-    
     value_to_subtract <- data_set$insp_rel_index[biggest] - data_set$insp_rel_index[center]
-    
     data_set$insp_rel_index <- data_set$insp_rel_index - value_to_subtract
-  
     for (index in 1:length(data_set$insp_rel_index)) {
       if (data_set$insp_rel_index[index] < 0 ){
         data_set$insp_rel_index[index] <- data_set$insp_rel_index[index] +1
@@ -153,11 +198,8 @@ give_it_center <- function(data_set, center = 50){
     }
   } else{
     smallest <- which.max(data_set$est)
-    
     value_to_add <- data_set$insp_rel_index[center] - data_set$insp_rel_index[smallest]
-    
     data_set$insp_rel_index <- data_set$insp_rel_index + value_to_add
-  
     for (index in 1:length(data_set$insp_rel_index)) {
       if (data_set$insp_rel_index[index] > 1 ){
         data_set$insp_rel_index[index] <- data_set$insp_rel_index[index] -1
@@ -166,6 +208,8 @@ give_it_center <- function(data_set, center = 50){
   }
   return(data_set)
 }
+
+
 insp_add_sub_val <- function(data_set, center = 50){
   if (which.max(data_set$est) > center ){
     biggest <- which.max(data_set$est)
@@ -178,23 +222,14 @@ insp_add_sub_val <- function(data_set, center = 50){
   }
 }
 
+
 insp_shift_data <- function(data_set, shift_value_open, shift_value_closed){
   data_set <- mutate(data_set, insp_rel_index = ifelse(indicator=="open_chest",
                                                        (data_set$insp_rel_index + shift_value_open) %% 1,
                                                        (data_set$insp_rel_index + shift_value_closed) %% 1))
-  
-#  data_set$insp_rel_index <- (data_set$insp_rel_index + shift_value_open) %% 1
   return(data_set)
 }
 
-move_kontour <- function(data_contour, input_scale_open, input_scale_closed){
-  data_contour <- mutate(data_contour,
-                         est = c(est[((100 - input_scale_open) * 100 + 1):10000],
-                                 est[1:((100 - input_scale_open) * 100)],
-                                 est[((100 - input_scale_closed) * 100 + 10001):20000],
-                                 est[10001:((100 - input_scale_closed) * 100 + 10000)]))
-  return(data_contour)
-}
 
 create_dygraphs <- function(closed, open){
   res1 <- dygraph_gam(closed, resid=TRUE)
@@ -211,35 +246,61 @@ create_dygraphs <- function(closed, open){
 Testing area:
 
 ```{r}
-# testpt <- "pt02"
-# center_open <- 25
-# center_closed <- 25
-# 
-# patient_path_open <- paste("../GAM_RDS/", testpt, "OPEN.rds",sep="")
-# pt_data_open <- readRDS(patient_path_open, refhook = NULL)
-#   
-# patient_path_closed <- paste("../GAM_RDS/", testpt, "CLOSED.rds",sep="")
-# pt_data_closed <- readRDS(patient_path_closed, refhook = NULL)
-# 
-# 
-# a <- create_contour_patient(pt_data_open, pt_data_closed)
-# 
-# 
-# # For snap plots
-# preds <- create_patient_preds(ptopen = pt_data_open, ptclosed = pt_data_closed)
-# snapplot <- create_viz(pred_both = preds,
-#                        patient_number = toString(strtoi(str_sub(testpt,-2))))
-# 
-# # For stacked INSP/QRS plots
-# stackedplotINSP <- ggplot() +
-#   geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_open,'s(insp_rel_index)'),center_open),
-#             aes(insp_rel_index,est, colour="open")) +
-#   geom_line(data=give_it_center(gratia::evaluate_smooth(pt_data_closed,'s(insp_rel_index)'),center_closed),
-#             aes(insp_rel_index,est, colour="closed")) +
-#   scale_color_manual(values = c('open' = 'darkblue',
-#                                 'closed' = 'red')) +
-#   theme(legend.position = "none") +
-#   ggtitle("INSP")
+testpt <- "pt02"
+center_open <- 50
+center_closed <- 58
+
+patient_path_open <- paste("../GAM_RDS/", testpt, "OPEN.rds",sep="")
+pt_data_open <- readRDS(patient_path_open, refhook = NULL)
+
+patient_path_closed <- paste("../GAM_RDS/", testpt, "CLOSED.rds",sep="")
+pt_data_closed <- readRDS(patient_path_closed, refhook = NULL)
+
+#testio <- give_it_center(gratia::evaluate_smooth(pt_data_open,'s(insp_rel_index)'),50)
+#testic <- give_it_center(gratia::evaluate_smooth(pt_data_closed,'s(insp_rel_index)'),58)
+#testqo <- gratia::evaluate_smooth(pt_data_open,'s(qrs_rel_index)')
+#testqc <- gratia::evaluate_smooth(pt_data_closed,'s(qrs_rel_index)')
+
+
+testo <- gratia::evaluate_smooth(pt_data_open, 'ti(qrs_rel_index,insp_rel_index)')
+testc <- gratia::evaluate_smooth(pt_data_closed, 'ti(qrs_rel_index,insp_rel_index)')
+
+
+test <- move_contour(create_contour_patient(testo, testc),
+                                            center_open,
+                                            center_closed)
+test <- test[order(test$indicator, test$qrs_rel_index, test$insp_rel_index),]
+test1 <- data.frame(qrs_rel_index = test$qrs_rel_index[1:10000],
+                    insp_rel_index = test$insp_rel_index[1:10000],
+                    est = test$est[10001:20000] - test$est[1:10000]) # open minus closed est
+
+contourp <- create_contour_viz(move_contour(create_contour_patient(testo, testc),
+                                            center_open,
+                                            center_closed))
+
+create_contour_viz <- function(data_set,
+                               lab.title = "Effect of interaction term between respiration and QRS on CVP",
+                               lab.y = "Relative respiration index",
+                               lab.x = "Relative QRS index",
+                               lab.legend = "Estimated effect\non CVP",
+                               wrap = TRUE){
+  viz <- ggplot(data_set, aes(qrs_rel_index, insp_rel_index, z = est)) +
+    geom_raster(aes(fill = est)) +
+    geom_contour(colour = "black") +
+    scale_fill_gradientn(colours=c("#0000FFFF","#FFFFFFFF","#FF0000FF")) +
+      labs(title = lab.title,
+           y = lab.y,
+           x = lab.x,
+           fill = lab.legend) +
+    theme(axis.title.y = element_text(margin = margin(t = 0, r = 5, b = 0, l = 0)))
+  if(wrap){
+    viz <- viz + facet_wrap(~ indicator)}
+  return(viz)
+}
+
+
+create_contour_viz(test1, wrap = FALSE)
+
 
 ```
 
@@ -260,7 +321,6 @@ patient_list <- paste('pt', str_pad(seq(1,61), 2, pad = "0"), sep = "")
 
 ui <- fluidPage(theme = shinytheme("sandstone"),
   navbarPage("GAM on heart-lung interaction during thoractomy", # Page header
-    
     # First page begins
     tabPanel("Main page",
         
@@ -271,6 +331,9 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
                                  min = 1, max = 100, value = 50),
                      sliderInput("center_open", label = "Index placement of largest respiration effect during open chest",
                                  min = 1, max = 100, value = 50),
+                     tags$div(class="multicol", checkboxGroupInput("showhide", "Plots to show",
+                                        choices = c("Regular plots" = "reg", "Closed/open difference plots" = "diff"),
+                                        selected = c("reg"))),
                      h3("Model details"),
                      tableOutput('table'),
                      #tags$style(type="text/css", "#table tr td:first-child {font-weight:bold;}"),
@@ -283,7 +346,7 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
 
                   
         # Main panel for displaying outputs
-        mainPanel(plotOutput(outputId = "samlet_plots", height = "1200px"), tableOutput("oversigt_tabel"))
+        mainPanel(plotOutput(outputId = "all_plots", height = "1200px"), tableOutput("oversigt_tabel"))
     ), 
     
     # Second page begins
@@ -326,28 +389,56 @@ server <- function(input, output) {
     gratia::evaluate_smooth(pt_data_open(),'s(qrs_rel_index)'),
     gratia::evaluate_smooth(pt_data_closed(),'s(qrs_rel_index)'))})
   
+  # For stacked diff plots
+  stackeddiffp <- reactive({stacked_diff_plot(
+    give_it_center(gratia::evaluate_smooth(pt_data_open(),'s(insp_rel_index)'),input$center_open),
+    give_it_center(gratia::evaluate_smooth(pt_data_closed(),'s(insp_rel_index)'),input$center_closed),
+    gratia::evaluate_smooth(pt_data_open(),'s(qrs_rel_index)'),
+    gratia::evaluate_smooth(pt_data_closed(),'s(qrs_rel_index)'))})
+  
+  
   # For contour plots
-  data_open_contour <- reactive({ gratia::evaluate_smooth(pt_data_open(), 'ti(qrs_rel_index,insp_rel_index)')})
-  data_closed_contour <- reactive({ gratia::evaluate_smooth(pt_data_closed(), 'ti(qrs_rel_index,insp_rel_index)')})
+  data_open_contour <- reactive({gratia::evaluate_smooth(pt_data_open(), 'ti(qrs_rel_index,insp_rel_index)')})
+  data_closed_contour <- reactive({gratia::evaluate_smooth(pt_data_closed(), 'ti(qrs_rel_index,insp_rel_index)')})
   
-  data_contour_patient <- reactive({ create_contour_patient(data_open_contour(), data_closed_contour())})
-  contour_samlet <- reactive({create_contour_viz(move_kontour(data_contour_patient(),
-                                                              input$center_open,
-                                                              input$center_closed),
-                                                 toString(strtoi(str_sub(input$patient,-2))))})
+  contourp <- reactive({create_contour_viz(move_contour(create_contour_patient(data_open_contour(), 
+                                                                               data_closed_contour()),
+                                                        input$center_open,
+                                                        input$center_closed))})
+  # For contour difference plots
+  contourdiffp <- reactive({create_contour_viz(create_contour_diff_data(move_contour(create_contour_patient(
+                                                        data_open_contour(),
+                                                        data_closed_contour()),
+                                                    input$center_open,
+                                                    input$center_closed)),
+                                               lab.legend = "Interaction effect\nduring open chest \nminus interaction \neffect during     \nclosed chest",
+                                               wrap = TRUE)})
   
-
   
-  output$samlet_plots <- renderPlot({
-    plotmatrix <- rbind(c(1,1),
-                        c(2,2),
-                        c(3,3))
-    plotlist <- list(stackedp(), contour_samlet(), snapplot())
-    if (length(plotlist)==0) return(NULL)
-    grid.arrange(grobs=plotlist, layout_matrix = plotmatrix)#nrow=length(plotlist))
+  
+  # Rendering plots
+  output$all_plots <- renderPlot({
     
-  })# renderPlot ends here
-  
+    plotlist <- list(stackedp(), contourp(), snapplot(), stackeddiffp(), contourdiffp(), ggplot(data.frame()))
+    
+    toPlot <- rep(FALSE, 6)
+    plotmatrix <- matrix(nrow = 3, ncol = 0)
+
+    if (length(input$showhide) == 0) {
+      ggplot(data.frame())
+    } else {
+      if (any("reg" == input$showhide)){
+        toPlot[1:3] <- TRUE
+        plotmatrix <- cbind(plotmatrix, rbind(c(1), c(2), c(3)))
+      }
+      if (any("diff" == input$showhide)){
+        toPlot[4:6] <- TRUE
+        plotmatrix <- cbind(plotmatrix, rbind(c(4), c(5), c(6)))
+      }
+      plotlist <- plotlist[toPlot]
+      grid.arrange(grobs = plotlist, layout_matrix = plotmatrix, nrow = 3)
+    }
+  }) # renderPlot ends here
   
   # Dygraphs
   dy_graphs <- reactive({create_dygraphs(pt_data_closed(), pt_data_open())})
@@ -433,7 +524,7 @@ server <- function(input, output) {
                 HTML(paste(str1, str11, str111, str2, str22, str222, str3, str33, str333, sep = '<br/>') )
             })   
   
-} # server slutter
+} # server ends
 
 OurApp <- shinyApp(ui = ui, server = server)
 runApp(OurApp)
