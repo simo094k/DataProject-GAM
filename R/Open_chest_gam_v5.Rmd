@@ -254,11 +254,21 @@ insp_shift_data <- function(data_set, shift_value_open, shift_value_closed){
 }
 
 
-create_dygraphs <- function(closed, open){
-  res1 <- dygraph_gam(closed, resid=TRUE)
-  res1$x$group <- NULL
-  dy_graph <- list(res1, dygraph_gam(open, resid=TRUE))
-  return(dy_graph)
+create_dygraphs <- function(obj, closed, ptnumber){
+  if (closed==TRUE){
+    res1 <- dygraph_gam(obj, resid=TRUE)
+    res1$x$group <- NULL
+    res1$x$attrs$ylabel <- "CVP"
+    res1$x$attrs$title <- paste0(ptnumber, " - Closed chest")
+    res1$x$attrs$xlabel <- "Time"
+  }
+  else{
+    res1 <- dygraph_gam(obj, resid=TRUE)
+    res1$x$attrs$ylabel <- "CVP"
+    res1$x$attrs$title <- paste0(ptnumber, " - Open chest")
+    res1$x$attrs$xlabel <- "Time"
+  }
+  return(res1)
 }
 
 ```
@@ -383,7 +393,7 @@ ui <- fluidPage(
     # Second page begins
     tabPanel("Residuals",
              sidebarPanel(h3("Description"), htmlOutput("text2")),
-             mainPanel(htmlOutput("dygraph1"))
+             mainPanel(dygraphOutput("dygraph1"), dygraphOutput("dygraph2"))
              ),
   
     # Third page begins
@@ -486,13 +496,18 @@ server <- function(input, output, session) {
   }) # renderPlot ends here
   
   # Dygraphs
-  dy_graphs <- reactive({create_dygraphs(pt_data_closed(), pt_data_open())})
+  dy_graph1 <- reactive({create_dygraphs(pt_data_closed(), closed=TRUE, input$patient)})
+  dy_graph2 <- reactive({create_dygraphs(pt_data_open(), closed=FALSE, input$patient)})
   
-  output$dygraph1 <- renderUI({htmltools::browsable(htmltools::tagList(dy_graphs()))})
+  output$dygraph1 <- renderDygraph({dy_graph1()})
+  output$dygraph2 <- renderDygraph({dy_graph2()})
+  
   # Dygraph render ends here
   
   output$text2 <- renderText({
-    HTML("On this page you can see observed values, the models predicted values, and residuals.")
+    HTML('On this page you can see the observed values, the predicted values of the models, and the residuals.
+         <br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br>
+         <br><br><br><br><br><br><br>')
     }) # Render Text for second page
   
   # This is a TABLE!
