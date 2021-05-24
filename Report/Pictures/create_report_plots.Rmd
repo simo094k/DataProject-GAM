@@ -1,0 +1,128 @@
+---
+title: "Creating_report_plots"
+author: "Simon Hansen"
+date: "24/5/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Dependencies ###
+
+```{r}
+rm(list = ls()) # clearing workspace
+library(viridis)
+library(waveformtools)
+library(tidyverse)
+library(mgcv)
+library(hms)
+library(shiny)
+library(shinythemes)
+library(shinyTime)
+library(data.table)
+library(readr)
+library(dygraphs)
+library(dplyr)
+library(gridExtra)
+```
+
+
+### Load the functions from the functions.R file ###
+
+```{r}
+source("../functions.R")
+```
+
+
+```{r}
+ # Loading data
+ # patient_path_open <- pt02OPEN
+  pt_data_open <- pt02OPEN
+  
+ # patient_path_closed <- reactive({paste("../GAM_RDS/", input$patient, "CLOSED.rds",sep="") })
+  pt_data_closed <- pt02CLOSED
+  data_open_contour <- gratia::evaluate_smooth(pt_data_open, 'ti(qrs_rel_index,insp_rel_index)')
+  data_closed_contour <- gratia::evaluate_smooth(pt_data_closed, 'ti(qrs_rel_index,insp_rel_index)')
+  
+  contourp <-create_contour_viz(move_contour(create_contour_patient(data_open_contour, data_closed_contour),50, 56))
+  ggsave("contour.png", contourp, width = 9.33, height = 4 ,dpi=800)
+```
+
+```{r}
+ pt_data_open <- pt07OPEN
+ pt_data_closed <- pt07CLOSED
+  stackedp <- stacked_plot(
+    give_it_center(gratia::evaluate_smooth(pt_data_open,'s(insp_rel_index)'),50),
+    give_it_center(gratia::evaluate_smooth(pt_data_closed,'s(insp_rel_index)'),56),
+    gratia::evaluate_smooth(pt_data_open,'s(qrs_rel_index)'),
+    gratia::evaluate_smooth(pt_data_closed,'s(qrs_rel_index)'))
+
+  ggsave("stackedup.png", stackedp, width = 9.33, height = 4 ,dpi=800)
+```
+
+
+```{r}
+  open_add_sub_value <- insp_add_sub_val(gratia::evaluate_smooth(pt_data_open,'s(insp_rel_index)'),
+                                                   50)
+
+  closed_add_sub_value <- insp_add_sub_val(gratia::evaluate_smooth(pt_data_closed,'s(insp_rel_index)'), 
+                                                     56)
+
+  # For snap plots
+  preds <- insp_shift_data(create_patient_preds(pt_data_open, pt_data_closed),
+                                     open_add_sub_value, 
+                                     closed_add_sub_value)
+                           
+  snapplot <- create_viz(pred_both = preds)
+    ggsave("snapplot-pt7.png", snapplot, width = 9.33, height = 4 ,dpi=800)
+```
+
+
+```{r}
+stackeddiffp <- stacked_diff_plot(
+    give_it_center(gratia::evaluate_smooth(pt_data_open,'s(insp_rel_index)'),50),
+    give_it_center(gratia::evaluate_smooth(pt_data_closed,'s(insp_rel_index)'),56),
+    gratia::evaluate_smooth(pt_data_open,'s(qrs_rel_index)'),
+    gratia::evaluate_smooth(pt_data_closed,'s(qrs_rel_index)'))
+
+ ggsave("stackeddiff-pt2.png", stackeddiffp, width = 9.33, height = 4 ,dpi=800)
+```
+
+
+```{r}
+ data_open_contour <- gratia::evaluate_smooth(pt_data_open, 'ti(qrs_rel_index,insp_rel_index)')
+  data_closed_contour <- gratia::evaluate_smooth(pt_data_closed, 'ti(qrs_rel_index,insp_rel_index)')
+  
+  contourdiffp <-create_contour_viz(create_contour_diff_data(move_contour(create_contour_patient(
+            data_open_contour,
+            data_closed_contour),
+        50,
+        56)),
+    lab.legend = "Interaction effect during   \nopen chest minus interaction \neffect during closed chest",
+    lab.title = "The difference in interaction effect (respiration and QRS) before and after thoractomy",
+    wrap = TRUE,
+    left_margin = 12)
+  
+  
+  ggsave("contourdiffp.png", contourdiffp, width = 9.33, height = 4 ,dpi=800)
+
+```
+
+```{r}
+  open_add_sub_value <- insp_add_sub_val(gratia::evaluate_smooth(pt_data_open,'s(insp_rel_index)'),
+                                                   50)
+
+  closed_add_sub_value <- insp_add_sub_val(gratia::evaluate_smooth(pt_data_closed,'s(insp_rel_index)'), 
+                                                     56)
+
+  # For snap plots
+  preds <- insp_shift_data(create_patient_preds(pt_data_open, pt_data_closed),
+                                     open_add_sub_value, 
+                                     closed_add_sub_value)
+ # For snap diff plots
+  snapplot_diff <- diff_snap_plot(preds, lab.legend = "Relative \nrespiration index")
+  
+    ggsave("snapplot_diff.png", snapplot_diff, width = 9.33, height = 4 ,dpi=800)
+```
