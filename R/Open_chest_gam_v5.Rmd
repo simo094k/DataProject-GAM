@@ -15,13 +15,12 @@ library(hms)
 library(shiny)
 library(shinythemes)
 library(shinyTime)
-#library(shinyBS)
 library(data.table)
 library(readr)
 library(dygraphs)
 library(dplyr)
-#library(ggpubr)
 library(gridExtra)
+#library(shinyBS)
 ```
 
 Functions:
@@ -194,14 +193,14 @@ diff_snap_plot <- function(preds_data, lab.legend = "Relative        \nrespirati
   
   data_to_plot <- tibble(insp_rel_index = (closed_and$insp_rel_index + open_and$insp_rel_index)/2,
                          qrs_rel_index = closed_and$qrs_rel_index,
-                         CVP = closed_and$CVP - open_and$CVP,
+                         CVP = open_and$CVP - closed_and$CVP,
                          indicator = rep("Difference", 5000))
 
   viz <- ggplot(data = data_to_plot, aes(x=qrs_rel_index, y=CVP, group = insp_rel_index)) +
     geom_line(aes(color=insp_rel_index), size = 0.9) +
     scale_color_gradientn(colours = turbo(10)) +
-    labs(title = "Change in CVP as a function of relative QRS index at selected relative respiration index times",
-         y = "CVP",
+    labs(title = "The difference in CVP as a function of relative QRS index at selected relative respiration index times",
+         y = "Difference in CVP (open minus close)",
          x = "Relative QRS index",
          colour = lab.legend) +
     theme(axis.title.y = element_text(margin = margin(t = 0, r = 15, b = 0, l = 0))) + 
@@ -267,53 +266,50 @@ create_dygraphs <- function(closed, open){
 Testing area:
 
 ```{r}
-testpt <- "pt02"
-center_open <- 50
-center_closed <- 58
-
-patient_path_open <- paste("../GAM_RDS/", testpt, "OPEN.rds",sep="")
-pt_data_open <- readRDS(patient_path_open, refhook = NULL)
-
-patient_path_closed <- paste("../GAM_RDS/", testpt, "CLOSED.rds",sep="")
-pt_data_closed <- readRDS(patient_path_closed, refhook = NULL)
-
-#testio <- give_it_center(gratia::evaluate_smooth(pt_data_open,'s(insp_rel_index)'),50)
-#testic <- give_it_center(gratia::evaluate_smooth(pt_data_closed,'s(insp_rel_index)'),58)
-#testqo <- gratia::evaluate_smooth(pt_data_open,'s(qrs_rel_index)')
-#testqc <- gratia::evaluate_smooth(pt_data_closed,'s(qrs_rel_index)')
-
-
-testo <- gratia::evaluate_smooth(pt_data_open, 'ti(qrs_rel_index,insp_rel_index)')
-testc <- gratia::evaluate_smooth(pt_data_closed, 'ti(qrs_rel_index,insp_rel_index)')
-
-
-test <- move_contour(create_contour_patient(testo, testc),
-                                            center_open,
-                                            center_closed)
-test <- test[order(test$indicator, test$qrs_rel_index, test$insp_rel_index),]
-test1 <- data.frame(qrs_rel_index = test$qrs_rel_index[1:10000],
-                    insp_rel_index = test$insp_rel_index[1:10000],
-                    est = test$est[10001:20000] - test$est[1:10000],
-                    indicator = rep("Difference", 10000)) # open minus closed est
-test$indicator <- as.character(test$indicator)
-test3 <- bind_rows(test[,c(3,4,5,7)],test1)
-
-merge_contour_data_diff <- function(data_set){
-  data_set <- data_set[order(data_set$indicator, data_set$qrs_rel_index, data_set$insp_rel_index),]
-  data_set_diff <- data.frame(qrs_rel_index = test$qrs_rel_index[1:10000],
-                              insp_rel_index = test$insp_rel_index[1:10000],
-                              est = test$est[10001:20000] - test$est[1:10000],
-                              indicator = rep("Difference", 10000)) # open minus closed est
-  data_set$indicator <- as.character(data_set$indicator)
-  final <- bind_rows(data_set[,c(3,4,5,7),], data_set_diff)
-  final <- transform(final, indicator=factor(indicator, levels = c("closed_chest","open_chest","Difference")))
-  return(final)
-}
-
-
-
-
-create_contour_viz(merge_contour_data_diff(test))
+# testpt <- "pt02"
+# center_open <- 50
+# center_closed <- 58
+# 
+# patient_path_open <- paste("../GAM_RDS/", testpt, "OPEN.rds",sep="")
+# pt_data_open <- readRDS(patient_path_open, refhook = NULL)
+# 
+# patient_path_closed <- paste("../GAM_RDS/", testpt, "CLOSED.rds",sep="")
+# pt_data_closed <- readRDS(patient_path_closed, refhook = NULL)
+# 
+# #testio <- give_it_center(gratia::evaluate_smooth(pt_data_open,'s(insp_rel_index)'),50)
+# #testic <- give_it_center(gratia::evaluate_smooth(pt_data_closed,'s(insp_rel_index)'),58)
+# #testqo <- gratia::evaluate_smooth(pt_data_open,'s(qrs_rel_index)')
+# #testqc <- gratia::evaluate_smooth(pt_data_closed,'s(qrs_rel_index)')
+# 
+# 
+# testo <- gratia::evaluate_smooth(pt_data_open, 'ti(qrs_rel_index,insp_rel_index)')
+# testc <- gratia::evaluate_smooth(pt_data_closed, 'ti(qrs_rel_index,insp_rel_index)')
+# 
+# 
+# test <- move_contour(create_contour_patient(testo, testc),
+#                                             center_open,
+#                                             center_closed)
+# test <- test[order(test$indicator, test$qrs_rel_index, test$insp_rel_index),]
+# test1 <- data.frame(qrs_rel_index = test$qrs_rel_index[1:10000],
+#                     insp_rel_index = test$insp_rel_index[1:10000],
+#                     est = test$est[10001:20000] - test$est[1:10000],
+#                     indicator = rep("Difference", 10000)) # open minus closed est
+# test$indicator <- as.character(test$indicator)
+# test3 <- bind_rows(test[,c(3,4,5,7)],test1)
+# 
+# merge_contour_data_diff <- function(data_set){
+#   data_set <- data_set[order(data_set$indicator, data_set$qrs_rel_index, data_set$insp_rel_index),]
+#   data_set_diff <- data.frame(qrs_rel_index = test$qrs_rel_index[1:10000],
+#                               insp_rel_index = test$insp_rel_index[1:10000],
+#                               est = test$est[10001:20000] - test$est[1:10000],
+#                               indicator = rep("Difference", 10000)) # open minus closed est
+#   data_set$indicator <- as.character(data_set$indicator)
+#   final <- bind_rows(data_set[,c(3,4,5,7),], data_set_diff)
+#   final <- transform(final, indicator=factor(indicator, levels = c("closed_chest","open_chest","Difference")))
+#   return(final)
+# }
+# 
+# create_contour_viz(merge_contour_data_diff(test))
 
 
 ```
@@ -335,13 +331,35 @@ patient_list <- paste('pt', str_pad(c(2, 3, 4, 5, 7, 9, 10, 11, 12, 14, 15, 16, 
                                       35, 37, 38, 41, 42, 44, 45, 46, 47, 48, 51, 52, 53, 54, 55, 57, 58), 
                                     2, pad = "0"), sep = "")
 
-ui <- fluidPage(theme = shinytheme("sandstone"),
+ui <- fluidPage(
+  tags$head(
+    tags$script(
+      HTML("
+            $(document).ready(function(){
+              // Mark columns we want to toggle
+              $('body').find('div [class=col-sm-4]').addClass('sidebarPanel');
+              $('body').find('div [class=col-sm-8]').addClass('mainPanel');
+            })
+
+
+            Shiny.addCustomMessageHandler ('resize',function (message) {
+              $('.sidebarPanel').toggle();
+              $('.mainPanel').toggleClass('col-sm-8 col-sm-12');
+              $(window).trigger('resize')
+            });
+
+           "))
+  ),
+  actionButton("showpanel", "Show/hide sidebar"),
+  theme = shinytheme("sandstone"),
   navbarPage("GAM on heart-lung interaction during thoractomy", # Page header
+
     # First page begins
     tabPanel("Main page",
-        
+     sidebarLayout(
+
         # Parameters
-        sidebarPanel(selectInput("patient", label = "Select patient", 
+        sidebarPanel(selectInput("patient", label = "Select patient",
                                  choices = list(patient_list = patient_list),  selected = "pt02"),
                      sliderInput("center_closed", label = "Index placement of largest respiration effect during closed chest",
                                  min = 1, max = 99, value = 50),
@@ -352,23 +370,19 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
                                         selected = c("reg"))),
                      h3("Model details"),
                      tableOutput('table'),
-                     #tags$style(type="text/css", "#table tr td:first-child {font-weight:bold;}"),
                      tags$style(type="text/css", "#table tr:first-child, td:first-child { font-weight: bold;}"),
                      tags$style(type="text/css",
                                 "#table tr:nth-child(1), tr:nth-child(5), tr:nth-child(10) {border-bottom: solid 2px black;}"),
                      tags$style(type="text/css", "#table tr:hover {background-color: #f8fff5;"),
                      htmlOutput("modeltext")),
 
-
-                  
         # Main panel for displaying outputs
-        mainPanel(plotOutput(outputId = "all_plots", height = "1200px"), tableOutput("oversigt_tabel"))
+        mainPanel(plotOutput(outputId = "all_plots", height = "1200px", width = "100%")))
     ), 
     
     # Second page begins
     tabPanel("Residuals",
-             sidebarPanel(h3("Description"),
-                           htmlOutput("text2")),
+             sidebarPanel(h3("Description"), htmlOutput("text2")),
              mainPanel(htmlOutput("dygraph1"))
              ),
   
@@ -377,8 +391,14 @@ ui <- fluidPage(theme = shinytheme("sandstone"),
   )
 )
 
-server <- function(input, output) {
+server <- function(input, output, session) {
   
+  # Show/hide sidepanel
+  observeEvent(input$showpanel,{
+    session$sendCustomMessage(type = 'resize', message = 1)
+  })
+  
+    
   # Loading data
   patient_path_open <- reactive({paste("../GAM_RDS/", input$patient, "OPEN.rds",sep="") })
   pt_data_open <- reactive({readRDS(patient_path_open(), refhook = NULL) })
@@ -444,9 +464,9 @@ server <- function(input, output) {
     } else {
       if (length(input$showhide) == 2){
         plotlist <- list(stackedp(), contourp(), snapplot(), stackeddiffp(), contourdiffp(), snapplot_diff())
-        plotmatrix <- rbind(c(1,1,1,4,4,4),
-                            c(2,2,2,5,5,5),
-                            c(3,3,3,6,6,6))
+        plotmatrix <- rbind(c(1,1,1,1,1,4,4,4,4,4),
+                            c(2,2,2,2,2,5,5,5,5,5),
+                            c(3,3,3,3,3,6,6,6,6,6))
       } else {
         if ("reg" == input$showhide){
           plotlist <- list(stackedp(), contourp(), snapplot())
