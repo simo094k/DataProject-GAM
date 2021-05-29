@@ -57,6 +57,7 @@ ui <- fluidPage(
 
            "))
     ),
+    
     actionButton("showpanel", "Show/hide sidebar"),
     theme = shinytheme("sandstone"),
     navbarPage("GAM on heart-lung interaction during thoractomy", # Page header
@@ -81,7 +82,11 @@ ui <- fluidPage(
                                          tags$style(type="text/css",
                                                     "#table tr:nth-child(1), tr:nth-child(5), tr:nth-child(10) {border-bottom: solid 2px black;}"),
                                          tags$style(type="text/css", "#table tr:hover {background-color: #f8fff5;"),
-                                         htmlOutput("modeltext")),
+                                         htmlOutput("modeltext"),
+                                         uiOutput("ex0"),
+                                         uiOutput("ex1"),
+                                         uiOutput("ex2")),
+                           
                             
                             # Main panel for displaying outputs
                             mainPanel(plotOutput(outputId = "all_plots", height = "1200px", width = "100%")))
@@ -94,7 +99,11 @@ ui <- fluidPage(
                ),
                
                # Third page begins
-               tabPanel("Info", "Created by Andreas, Casper, Mads & Simon")
+               tabPanel("Info",  # Skriv her
+                        "Created by Andreas, Casper, Mads & Simon")
+               
+               
+               
     )
 ) # UI ends
 
@@ -281,6 +290,24 @@ server <- function(input, output, session) {
         str333 <- ""
         HTML(paste(str1, str11, str111, str2, str22, str222, str3, str33, str333, sep = '<br/>') )
     })   
+    
+    # Modeller
+    output$ex0 <- renderUI({
+      withMathJax('LM: Linear Regression Model $$ \\scriptsize{  \\widehat{CVP} =\\beta_{1} \\cdot \\text{qrs_rel_index} +  \\gamma_{1} \\cdot
+                          \\text{insp_rel_index} + \\zeta_{1} \\cdot \\text{time} +
+                           \\epsilon }   $$')
+    })
+    output$ex1 <- renderUI({
+      withMathJax('Poly 1: Polynomial Regression Model 1 $$ \\scriptsize{  \\widehat{CVP} =\\sum_{i=1}^{12} \\beta_{i} \\cdot \\text{qrs_rel_index}^{i} +  \\sum_{j=1}^{8} \\gamma_{j} \\cdot
+                          \\text{insp_rel_index}^{j} + \\sum_{k=1}^{3} \\zeta_{k} \\cdot \\text{time}^{k} +
+                           \\epsilon }   $$')
+    })
+    output$ex2 <- renderUI({
+      withMathJax('Poly 2: Polynomial Regression Model 2 $$ \\scriptsize{  \\widehat{CVP} =\\sum_{i=1}^{23} \\beta_{i} \\cdot \\text{qrs_rel_index}^{i} +  \\sum_{j=1}^{23} \\gamma_{j} \\cdot
+                          \\text{insp_rel_index}^{j}  + \\sum_{k=1}^{23} \\zeta_{k} \\cdot \\text{time}^{k} +
+                           \\epsilon }   $$')
+    })
+    
     
 } # server ends
 
