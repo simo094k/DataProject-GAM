@@ -24,6 +24,7 @@ library(readr)
 library(dygraphs)
 library(dplyr)
 library(gridExtra)
+library(mathjaxr)
 
 ### Load the functions from the functions.R file ###
 source("functions.R")
@@ -99,8 +100,8 @@ ui <- fluidPage(
                ),
                
                # Third page begins
-               tabPanel("Info",  # Skriv her
-                        "Created by Andreas, Casper, Mads & Simon")
+               tabPanel("Info",  
+                        uiOutput("myList"))
                
                
                
@@ -309,7 +310,148 @@ server <- function(input, output, session) {
     })
     
     
+    output$modeltext <- renderUI({
+      str1 <- "LM: Linear Regression Model"
+      str11 <- "CVP = &beta;<sub>0</sub> (qrs_rel_index &times; insp_rel_index) + &beta;<sub>1</sub> qrs_rel_index + 
+                  &beta;<sub>2</sub> insp_rel_index + &beta;<sub>3</sub> time + &epsilon;."
+      str111 <- ""
+      str2 <- "Poly1: Polynomial Regression Model 1"
+      str22 <- "CVP = &beta;<sub>0</sub> qrs_rel_index<sup>12</sup> + &beta;<sub>1</sub> insp_rel_index<sup>8</sup> + 
+                  &beta;<sub>2</sub> time<sup>3</sup> + &epsilon;."
+      str222 <- ""
+      str3 <- "Poly 2: Polynomial Regression Model 2"
+      str33 <- "CVP = &beta;<sub>0</sub> qrs_rel_index<sup>23</sup> + &beta;<sub>1</sub> insp_rel_index<sup>23</sup> + 
+                  &beta;<sub>2</sub> time<sup>23</sup> + &epsilon;."
+      str333 <- ""
+      HTML(paste(str1, str11, str111, str2, str22, str222, str3, str33, str333, sep = '<br/>') )
+    })   
+    
+    output$myList <- renderUI(HTML("
+                        <p>In this Shiny-application, we have the following tabs:</p>
+
+<ul>
+  <li> <h5> <b>  Main page </b>  </h5> 
+  The main page is where the most relevant information is present. This includes an input-box in the right side of the page, 
+  where you can chose the patient that you want to inspect further. 
+  Moreover, there is an info box with model details such as the model interception and what time interval was used to build the model. 
+  Further below, some model validations are present. 
+  In the main section of the page, three plot-sections will then appear;
+  
+  <br><br>
+  
+  <u>Top plots: </u>
+  </li>
+    <ul>
+      <li>at the top left plot, a comparison of the marginal effects of respiration on CVP when the chest is open and closed, respectively</li>
+      <li>at the top right, a comparison of the marginal effects of QRS on CVP when the chest is open and closed, respectively</li>
+    </ul>
+  </li>
+  
+  <br>
+  
+  <u>Middle plots: </u>
+  </li>
+    <ul>
+      <li>
+A contour showing the marginal effect of the interaction between the respiration relative index and the inspiration relative index, on the CVP.
+<br>
+The the left contour plot shows the effect of the interaction term on CVP, when the chest is closed, while the right contour plot shows he effect of the interactionterm on CVP, when the chest is opened.      </li>
+    </ul>
+  </li>
+  
+  <br>
+  
+    <u>Bottom plots: </u>
+  </li>
+    <ul>
+      <li>
+at the top left plot, a comparison of the marginal effects of respiration on CVP when the chest is open and closed, respectively.
+</li>
+
+<li>
+at the top right, a comparison of the marginal effects of QRS on CVP when the chest is open and closed, respectively.
+</li>
+    </ul>
+  </li>
+  
+  <br> 
+  
+  Because many interesting answers can be expected to lie in the differences in the plots of 
+  when the thorax is closed and open, respectively, 
+  we have made it possible for the user to check-off 'Closed/open difference plots'. 
+  If checked, the user will be presented with three new plot-sections;
+  
+  <br>  <br>
+  
+  
+    <u>Top difference plots: </u>
+  </li>
+    <ul>
+      <li>
+at the top left plot, we have plotted the difference of the marginal effects of res-piration on CVP 
+before and after thoractomy, respectively.  We have done this by taking the effect during open chest 
+and minus with the effect during closed chest
+</li>
+
+<li>
+at the top right, we have plotted the difference of the marginal effects of QRS onCVP before and after thoractomy, respectively.  
+We have done this by taking the effect during open chest and minus with the effect during closed chest.</li>
+    </ul>
+  </li>
+  
+  <br>
+ 
+    <u>Middle difference plot: </u>
+  </li>
+    <ul>
+      <li>
+A contour showing the difference in the interaction effect between the respirationrelative  index  
+and  the  inspiration  relative  index,  before  and  after  thoractomy, respectively.
+</li>
+    </ul>
+  </li>
+  
+  <br>
+  
+      <u>Bottom difference plots: </u>
+  </li>
+    <ul>
+      <li>
+This plot shows the difference in CVP as a function of the relative QRS index at 10 selected respiration index times.
+    </ul>
+  </li>
+  
+  <br> 
+  
+  <li>  <h5> <b> Residuals page </b>   </h5> 
+  
+  This page is intended as a way of inspecting the data used to construct the model.
+  Sometimes, the results produced by the models can be confusing or need to be validatedin some way.  
+  This perplexity could be caused by the presence of noise or a short timeslot.   
+  Therefore,  we have dedicated a page to enable a user to inspect the observedvalues, values predicted by the model, 
+  and the residuals.  The plots are labelled and assigned a legend to ease the interpretation.
+  
+  </li>
+  
+    <br> 
+  
+  <li> <h5> <b>   Info </b>   </h5>
+  This page can be used as a guideline of the interpretation of the <b> Main page</b> as  well as the <b>Residuals page</b> . 
+  There are general descriptions as well as a interpretation of the plots. Furthermore, 
+  there is a short description of how to use the application.
+  </li>
+  
+  
+</ul>
+            <br>
+                                   
+                                   <p> Created by Andreas, Casper, Mads & Simon</p>"))
+    
+    
+
+    
 } # server ends
 
 # Run the application 
 shinyApp(ui = ui, server = server)
+
