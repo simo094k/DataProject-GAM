@@ -83,7 +83,7 @@ ui <- fluidPage(
                                          tags$style(type="text/css",
                                                     "#table tr:nth-child(1), tr:nth-child(5), tr:nth-child(10) {border-bottom: solid 2px black;}"),
                                          tags$style(type="text/css", "#table tr:hover {background-color: #f8fff5;"),
-                                         htmlOutput("modeltext"),
+                                        
                                          uiOutput("ex0"),
                                          uiOutput("ex1"),
                                          uiOutput("ex2")),
@@ -275,56 +275,26 @@ server <- function(input, output, session) {
                                          bic_table()))}, 
                                 rownames=TRUE, 
                                 colnames=FALSE)
-    
-    output$modeltext <- renderUI({
-        str1 <- "LM: Linear Regression Model"
-        str11 <- "CVP = &beta;<sub>0</sub> (qrs_rel_index &times; insp_rel_index) + &beta;<sub>1</sub> qrs_rel_index + 
-                  &beta;<sub>2</sub> insp_rel_index + &beta;<sub>3</sub> time + &epsilon;."
-        str111 <- ""
-        str2 <- "Poly1: Polynomial Regression Model 1"
-        str22 <- "CVP = &beta;<sub>0</sub> qrs_rel_index<sup>12</sup> + &beta;<sub>1</sub> insp_rel_index<sup>8</sup> + 
-                  &beta;<sub>2</sub> time<sup>3</sup> + &epsilon;."
-        str222 <- ""
-        str3 <- "Poly 2: Polynomial Regression Model 2"
-        str33 <- "CVP = &beta;<sub>0</sub> qrs_rel_index<sup>23</sup> + &beta;<sub>1</sub> insp_rel_index<sup>23</sup> + 
-                  &beta;<sub>2</sub> time<sup>23</sup> + &epsilon;."
-        str333 <- ""
-        HTML(paste(str1, str11, str111, str2, str22, str222, str3, str33, str333, sep = '<br/>') )
-    })   
+   
     
     # Modeller
     output$ex0 <- renderUI({
-      withMathJax('LM: Linear Regression Model $$ \\scriptsize{  \\widehat{CVP} =\\beta_{1} \\cdot \\text{qrs_rel_index} +  \\gamma_{1} \\cdot
+      withMathJax('LM: Linear Regression Model $$ \\scriptsize{  \\widehat{CVP} =\\alpha +\\beta_{1} \\cdot \\text{qrs_rel_index} +  \\gamma_{1} \\cdot
                           \\text{insp_rel_index} + \\zeta_{1} \\cdot \\text{time} +
                            \\epsilon }   $$')
     })
     output$ex1 <- renderUI({
-      withMathJax('Poly 1: Polynomial Regression Model 1 $$ \\scriptsize{  \\widehat{CVP} =\\sum_{i=1}^{12} \\beta_{i} \\cdot \\text{qrs_rel_index}^{i} +  \\sum_{j=1}^{8} \\gamma_{j} \\cdot
+      withMathJax('Poly 1: Polynomial Regression Model 1 $$ \\scriptsize{  \\widehat{CVP} =\\alpha + \\sum_{i=1}^{12} \\beta_{i} \\cdot \\text{qrs_rel_index}^{i} +  \\sum_{j=1}^{8} \\gamma_{j} \\cdot
                           \\text{insp_rel_index}^{j} + \\sum_{k=1}^{3} \\zeta_{k} \\cdot \\text{time}^{k} +
                            \\epsilon }   $$')
     })
     output$ex2 <- renderUI({
-      withMathJax('Poly 2: Polynomial Regression Model 2 $$ \\scriptsize{  \\widehat{CVP} =\\sum_{i=1}^{23} \\beta_{i} \\cdot \\text{qrs_rel_index}^{i} +  \\sum_{j=1}^{23} \\gamma_{j} \\cdot
+      withMathJax('Poly 2: Polynomial Regression Model 2 $$ \\scriptsize{ \\widehat{CVP} = \\alpha +\\sum_{i=1}^{23} \\beta_{i} \\cdot \\text{qrs_rel_index}^{i} +  \\sum_{j=1}^{23} \\gamma_{j} \\cdot
                           \\text{insp_rel_index}^{j}  + \\sum_{k=1}^{23} \\zeta_{k} \\cdot \\text{time}^{k} +
                            \\epsilon }   $$')
     })
     
-    
-    output$modeltext <- renderUI({
-      str1 <- "LM: Linear Regression Model"
-      str11 <- "CVP = &beta;<sub>0</sub> (qrs_rel_index &times; insp_rel_index) + &beta;<sub>1</sub> qrs_rel_index + 
-                  &beta;<sub>2</sub> insp_rel_index + &beta;<sub>3</sub> time + &epsilon;."
-      str111 <- ""
-      str2 <- "Poly1: Polynomial Regression Model 1"
-      str22 <- "CVP = &beta;<sub>0</sub> qrs_rel_index<sup>12</sup> + &beta;<sub>1</sub> insp_rel_index<sup>8</sup> + 
-                  &beta;<sub>2</sub> time<sup>3</sup> + &epsilon;."
-      str222 <- ""
-      str3 <- "Poly 2: Polynomial Regression Model 2"
-      str33 <- "CVP = &beta;<sub>0</sub> qrs_rel_index<sup>23</sup> + &beta;<sub>1</sub> insp_rel_index<sup>23</sup> + 
-                  &beta;<sub>2</sub> time<sup>23</sup> + &epsilon;."
-      str333 <- ""
-      HTML(paste(str1, str11, str111, str2, str22, str222, str3, str33, str333, sep = '<br/>') )
-    })   
+
     
     output$myList <- renderUI(HTML("
                         <p>In this Shiny-application, we have the following tabs:</p>
@@ -433,13 +403,6 @@ This plot shows the difference in CVP as a function of the relative QRS index at
   
   </li>
   
-    <br> 
-  
-  <li> <h5> <b>   Info </b>   </h5>
-  This page can be used as a guideline of the interpretation of the <b> Main page</b> as  well as the <b>Residuals page</b> . 
-  There are general descriptions as well as a interpretation of the plots. Furthermore, 
-  there is a short description of how to use the application.
-  </li>
   
   
 </ul>
@@ -454,4 +417,4 @@ This plot shows the difference in CVP as a function of the relative QRS index at
 
 # Run the application 
 shinyApp(ui = ui, server = server)
-
+ 
