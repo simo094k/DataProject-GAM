@@ -61,7 +61,7 @@ ui <- fluidPage(
     
     actionButton("showpanel", "Show/hide sidebar"),
     theme = shinytheme("sandstone"),
-    navbarPage("GAM on heart-lung interaction during thoractomy", # Page header
+    navbarPage("GAM on heart-lung interaction during thoracotomy", # Page header
                
                # First page begins
                tabPanel("Main page",
@@ -168,7 +168,7 @@ server <- function(input, output, session) {
         input$center_open,
         input$center_closed)),
         lab.legend = "Interaction effect during   \nopen chest minus interaction \neffect during closed chest",
-        lab.title = "The difference in interaction effect (respiration and QRS) before and after thoractomy",
+        lab.title = "The difference in interaction effect (respiration and QRS) before and after thoracotomy",
         wrap = TRUE,
         left_margin = 12)})
     
@@ -297,23 +297,24 @@ server <- function(input, output, session) {
 
     
     output$myList <- renderUI(HTML("
-                        <p>In this Shiny-application, we have the following tabs:</p>
+                        <p>In this Shiny application, we have the following tabs:</p>
 
 <ul>
   <li> <h5> <b>  Main page </b>  </h5> 
-  The main page is where the most relevant information is present. This includes an input-box in the right side of the page, 
-  where you can chose the patient that you want to inspect further. 
-  Moreover, there is an info box with model details such as the model interception and what time interval was used to build the model. 
-  Further below, some model validations are present. 
-  In the main section of the page, three plot-sections will then appear;
+  The main page is where the most relevant information is present. This includes an input box 
+  in the left side of the page, where you can choose the patient that you want to inspect.
+  Moreover, there is an info box with model details, such as the model intercept and which 
+  time interval was used to build the model. Further below, some model scores are presented 
+  to allow for model validation. 
+  In the main section of the page, three plot-sections will then appear:
   
   <br><br>
   
   <u>Top plots: </u>
   </li>
     <ul>
-      <li>at the top left plot, a comparison of the marginal effects of respiration on CVP when the chest is open and closed, respectively</li>
-      <li>at the top right, a comparison of the marginal effects of QRS on CVP when the chest is open and closed, respectively</li>
+      <li>The top left plot is a comparison of the marginal effects of respiration on CVP when the chest is open and closed, respectively.</li>
+      <li>The top right plot is a comparison of the marginal effects of QRS on CVP when the chest is open and closed, respectively.</li>
     </ul>
   </li>
   
@@ -323,9 +324,9 @@ server <- function(input, output, session) {
   </li>
     <ul>
       <li>
-A contour showing the marginal effect of the interaction between the respiration relative index and the inspiration relative index, on the CVP.
+The contour plots show the effect of the interaction between the respiration and the QRS relative index, on the CVP.
 <br>
-The the left contour plot shows the effect of the interaction term on CVP, when the chest is closed, while the right contour plot shows he effect of the interactionterm on CVP, when the chest is opened.      </li>
+The left contour plot shows the effect when the chest is closed, while the right contour plot shows the effect when the chest is opened.      </li>
     </ul>
   </li>
   
@@ -335,21 +336,24 @@ The the left contour plot shows the effect of the interaction term on CVP, when 
   </li>
     <ul>
       <li>
-at the top left plot, a comparison of the marginal effects of respiration on CVP when the chest is open and closed, respectively.
+The snapshot plots are a combination of the marginal effects of the relative position in the two cycles, their interaction, and the intercept. 
+If the lines are on top of each other,  there is no marginal effect from the relative position in the respiration cycle. 
+If all the lines are parallel, there appears to be no interactive effect, but if the lines possess different morphology, 
+there appears to be an interactive effect.
 </li>
 
 <li>
-at the top right, a comparison of the marginal effects of QRS on CVP when the chest is open and closed, respectively.
+The left snapshot plot shows the effects when the chest is closed, while the right snapshot plot shows the effects when the chest is opened.
 </li>
     </ul>
   </li>
   
   <br> 
   
-  Because many interesting answers can be expected to lie in the differences in the plots of 
-  when the thorax is closed and open, respectively, 
-  we have made it possible for the user to check-off 'Closed/open difference plots'. 
-  If checked, the user will be presented with three new plot-sections;
+  Because most interesting answers can be expected to lie in the differences 
+  within the plots of closed and open chest, we have made it possible for the 
+  user to check-off 'Closed/open difference plots'. If checked, the user will 
+  be presented with three new plot-sections:
   
   <br>  <br>
   
@@ -358,14 +362,16 @@ at the top right, a comparison of the marginal effects of QRS on CVP when the ch
   </li>
     <ul>
       <li>
-at the top left plot, we have plotted the difference of the marginal effects of res-piration on CVP 
-before and after thoractomy, respectively.  We have done this by taking the effect during open chest 
-and minus with the effect during closed chest
+The top left plot shows the difference in the marginal effect of respiration on 
+CVP before and after thoracotomy. We have done this by taking the effect during 
+open chest and subtracted the effect during closed chest.
 </li>
 
 <li>
-at the top right, we have plotted the difference of the marginal effects of QRS onCVP before and after thoractomy, respectively.  
-We have done this by taking the effect during open chest and minus with the effect during closed chest.</li>
+The top right plot shows the difference in the marginal effect of QRS on CVP 
+before and after thoracotomy. We have done this by taking the effect during open 
+chest and subtracted the effect during closed chest.
+</li>
     </ul>
   </li>
   
@@ -375,8 +381,8 @@ We have done this by taking the effect during open chest and minus with the effe
   </li>
     <ul>
       <li>
-A contour showing the difference in the interaction effect between the respirationrelative  index  
-and  the  inspiration  relative  index,  before  and  after  thoractomy, respectively.
+A contour plot showing the difference in the interaction effect between the 
+respiration and the QRS relative index, before and after thoracotomy.
 </li>
     </ul>
   </li>
@@ -387,7 +393,8 @@ and  the  inspiration  relative  index,  before  and  after  thoractomy, respect
   </li>
     <ul>
       <li>
-This plot shows the difference in CVP as a function of the relative QRS index at 10 selected respiration index times.
+This plot shows the difference (calculated as open minus closed) in CVP as a 
+function of the relative QRS index at 10 selected respiration index times.
     </ul>
   </li>
   
@@ -395,11 +402,11 @@ This plot shows the difference in CVP as a function of the relative QRS index at
   
   <li>  <h5> <b> Residuals page </b>   </h5> 
   
-  This page is intended as a way of inspecting the data used to construct the model.
-  Sometimes, the results produced by the models can be confusing or need to be validatedin some way.  
-  This perplexity could be caused by the presence of noise or a short timeslot.   
-  Therefore,  we have dedicated a page to enable a user to inspect the observedvalues, values predicted by the model, 
-  and the residuals.  The plots are labelled and assigned a legend to ease the interpretation.
+  This page is intended as a way of inspecting the data used to construct the model. 
+  Sometimes, the results produced by the models can be confusing or need to be validated in some way. 
+  This perplexity could be caused by the presence of noise or a short time slot. 
+  Therefore, we have dedicated a page to enable a user to inspect the observed values, values 
+  predicted by the model, and the residuals. The plots are labelled and assigned a legend to ease the interpretation. 
   
   </li>
   

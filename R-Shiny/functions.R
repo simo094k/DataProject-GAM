@@ -1,17 +1,13 @@
 gen_predictions <- function(cvp_gam) {
-  # a function that generates predictions according to the given model
-  # the code is a slightly modified version of Johannes'
+  # A function that generates predictions according to the given model.
+  # The code is a slightly modified version of Johannes'.
+  # It takes a GAM object as input.
+  
   if (is.null(cvp_gam)) return(NULL)
-  
-  #find max of insp_index smooth
-  #insp_rel_index_smooth <- gratia::evaluate_smooth(cvp_gam, 's(insp_rel_index)')
-  #insp_rel_index_max <- insp_rel_index_smooth$insp_rel_index[which.max(insp_rel_index_smooth$est)]
-  
+
   structured_data <- expand.grid(insp_rel_index = c(
     # Generate predictions for 10 levels of inspiration between start and max inspiration
-    seq(0, 0.9, length.out = 10)), #insp_rel_index_max, length.out = 10)), 
-    # And 1 prediction 1 sec after max inspiration                                      
-    #insp_rel_index_max + c(1)), # uncommented for our use case
+    seq(0, 0.9, length.out = 10)), 
     # Generate 200 predictions uniformaly across the qrs_rel_index (to get a smooth line)
     qrs_rel_index = seq(0,1, length.out = 500),
     # Choose 'some' position for the trend smooth (or better, do not include it in the prediction)
@@ -27,19 +23,22 @@ gen_predictions <- function(cvp_gam) {
 
 
 create_patient_preds <- function(ptopen, ptclosed){
-  # a function that creates predictions and combines data from closed and open chest into one data frame 
+  # A function that creates predictions and combines data from closed and open chest into one data frame. 
+  # As input, it takes an RDS file of the open chest GAM and an RDS file of the closed chest GAM.
+  # It returns predictions for both the open and closed data.
+  
   pred_open <- gen_predictions(ptopen)
   pred_closed <- gen_predictions(ptclosed)
   pred_both <- cbind(indicator=c(rep("open_chest", nrow(pred_open)),
                                  rep("closed_chest", nrow(pred_closed))),
-                     pred_both <- rbind(pred_open, pred_closed)) # makes an indicator variable wether it is open or closed chest
+                     pred_both <- rbind(pred_open, pred_closed)) # creates an indicator whether it is open or closed chest
   return(pred_both)
 }
 
 
 
 stacked_plot <- function(io, ic, qo, qc, patient_number = NULL){
-  # This function takes (inspiration/qrs) and (open/closed-chest) and outputs the plot for each combination.
+  # This function takes (inspiration/qrs) and (open/closed chest) and returns the plot for each combination.
   
   colnames(io)[3] <- "rel_index"
   colnames(ic)[3] <- "rel_index"
@@ -48,9 +47,9 @@ stacked_plot <- function(io, ic, qo, qc, patient_number = NULL){
   
   comb <- cbind(indicator=c(rep("open_chest", nrow(io)),
                             rep("closed_chest", nrow(ic))),
-                both <- rbind(io, ic, qo, qc)) # combines the data to make it easier to work with
+                both <- rbind(io, ic, qo, qc)) # combines the data to allow facet_wrap
   
-  #creates the plots with ggplot
+  # creates the plots with ggplot
   viz <- ggplot(data=comb, aes(x=rel_index, y=est, group=indicator)) +
     geom_line(aes(color=indicator), size = 0.9) +
     facet_wrap(~ smooth) +
@@ -65,7 +64,7 @@ stacked_plot <- function(io, ic, qo, qc, patient_number = NULL){
 
 
 stacked_diff_plot <- function(io, ic, qo, qc){
-  # This function takes (inspiration/qrs) and (open/closed-chest) and plots the difference in open/closed-chest.
+  # This function takes (inspiration/qrs) and (open/closed chest) and returns the plots of the difference in open/closed-chest.
   
   colnames(io)[3] <- "rel_index"
   colnames(ic)[3] <- "rel_index"
@@ -79,11 +78,11 @@ stacked_diff_plot <- function(io, ic, qo, qc){
   
   combo$est_diff <- combo$est - combc$est # takes the difference
   
-  # plots
+  # creates the plots with ggplot
   viz <- ggplot(data=combo, aes(x=rel_index, y=est_diff)) +
     geom_line(aes(), size = 0.9) +
     facet_wrap(~ smooth) +
-    labs(title = "The difference in marginal effects (respiration and QRS) before and after thoractomy",
+    labs(title = "The difference in marginal effects (respiration and QRS) before and after thoracotomy",
          y="Effect during open chest minus effect during closed chest",
          x="Relative respiration/QRS index") +
     theme(axis.title.y = element_text(margin = margin(t = 0, r = 15, b = 0, l = 0)))
@@ -92,8 +91,8 @@ stacked_diff_plot <- function(io, ic, qo, qc){
 
 
 create_contour_patient <- function(odata, cdata){
-  # this function takes open- and closed data. It is a helper function that combines the two datasets in one table 
-  # with an added column indicating whether the chest is open or closed
+  # This function takes open and closed data. It is a helper function that combines the two datasets in one data frame
+  # with an added column indicating whether the chest is open or closed.
   
   gather_in_one <- rbind(odata, cdata)
   gather_in_one$indicator <- cbind(c(rep("open_chest", nrow(odata)),
@@ -104,7 +103,10 @@ create_contour_patient <- function(odata, cdata){
 
 
 move_contour <- function(data_contour, input_scale_open, input_scale_closed){
-  # this function takes the combined dataset for open and closed and outputs a new dataset where the order has been rearranged
+  # This function takes the combined data set for open and closed, and the desired index placement of the largest 
+  # respiration effect for open and closed, respectively, as inputs.
+  # It returns a new data set where the order has been rearranged according to the desired index placement.
+  
   data_contour <- mutate(data_contour,
                          est = c(est[((100 - input_scale_open) * 100 + 1):10000],
                                  est[1:((100 - input_scale_open) * 100)],
@@ -115,8 +117,10 @@ move_contour <- function(data_contour, input_scale_open, input_scale_closed){
 
 
 create_contour_diff_data <- function(data_set){
-  # this function takes the combined dataset and outputs the difference in open and closed chest.
-  # this is done by subtracting the the open estimate from the closed estimate.
+  # This function takes the combined data set as input.
+  # It returns the combined data with the difference in open and closed chest as a new column.
+  # This is done by subtracting the open estimate from the closed estimate.
+
   data_set <- data_set[order(data_set$indicator, data_set$qrs_rel_index, data_set$insp_rel_index),]
   new_diff_data <- data.frame(qrs_rel_index = data_set$qrs_rel_index[1:10000],
                               insp_rel_index = data_set$insp_rel_index[1:10000],
@@ -133,9 +137,9 @@ create_contour_viz <- function(data_set,
                                lab.legend = "Estimated effect\non CVP",
                                wrap = TRUE,
                                left_margin = 5){
+  # This functions creates a contour plot for a data set with x-axis as QRS index and y-axis as respiration index.
   
-  # This functions plots a contour plot for a dataset with x-axis as QRS and y as repiration index
-  viz <- ggplot(data_set, aes(qrs_rel_index, insp_rel_index, z = est)) + # x,y and z dimensions
+  viz <- ggplot(data_set, aes(qrs_rel_index, insp_rel_index, z = est)) +
     geom_raster(aes(fill = est)) + # this creates the contour-plot
     geom_contour(colour = "black") +
     scale_fill_gradientn(colours=c("#0000FFFF","#FFFFFFFF","#FF0000FF")) +
@@ -151,7 +155,9 @@ create_contour_viz <- function(data_set,
 
 
 create_viz <- function(pred_both, patient_number = NULL){
-  # a function that creates a visualization comparing closed and open predictions with 10 lines
+  # A function that creates a snapshot visualization of CVP as a function of QRS cycle, 
+  # comparing closed and open predictions at 10 different times in the respiration cycle. 
+  # Contains both marginal effects, interaction effect and model intercept.
   
   viz <- ggplot(data = pred_both, aes(x=qrs_rel_index, y=CVP, group = insp_rel_index)) + 
     # takes x and y values. Where it groups over 10 different insp_rel_index indekses 
@@ -169,8 +175,9 @@ create_viz <- function(pred_both, patient_number = NULL){
 
 
 diff_snap_plot <- function(preds_data, lab.legend = "Relative        \nrespiration index"){
-  # this function takes the combined shifted data, sorts it, takes the difference in open and closed where it plots this difference for 10 different lines of indeks' 
-  
+  # This function takes the combined data as input.
+  # It then takes the difference in open and closed chest and returns a snapshot visualization of this difference.
+
   preds_data <- preds_data[order(preds_data$indicator, preds_data$insp_rel_index, preds_data$qrs_rel_index),]
   closed_and <- preds_data[1:5000,]
   open_and <- preds_data[5001:10000,]
@@ -194,7 +201,9 @@ diff_snap_plot <- function(preds_data, lab.legend = "Relative        \nrespirati
 }
 
 insp_shift_data <- function(data_set, shift_value_open, shift_value_closed){
-  # This function also shifts data. This is done for the datasets containing 10 different lines
+  # This function shifts inspiration index according to the shift values given as inputs.
+  # It returns the data set with the new indexes,
+  
   data_set <- mutate(data_set, insp_rel_index = ifelse(indicator=="open_chest",
                                                        (data_set$insp_rel_index + shift_value_open) %% 1,
                                                        (data_set$insp_rel_index + shift_value_closed) %% 1))
@@ -203,9 +212,11 @@ insp_shift_data <- function(data_set, shift_value_open, shift_value_closed){
 
 
 give_it_center <- function(data_set, center = 50){
-  # this function takes a dataset and calculates whether the data should be shifted 
-  # to the left or right so the largest value is the middel index
-  if (which.max(data_set$est) > center ){ # this is executed if the largest input is to the right of the center
+  # This function takes a data set and the desired index placement of the greatest respiration effect as inputs.
+  # It calculates whether the inspiration indexes should be shifted to the left or right, in order for the 
+  # largest respiration effect to be placed at the selected index and returns the shifted data set.
+  
+  if (which.max(data_set$est) > center ){ # This is executed if the largest effect's index is to the right of the center input
     biggest <- which.max(data_set$est)
     value_to_subtract <- data_set$insp_rel_index[biggest] - data_set$insp_rel_index[center]
     data_set$insp_rel_index <- data_set$insp_rel_index - value_to_subtract
@@ -214,7 +225,7 @@ give_it_center <- function(data_set, center = 50){
         data_set$insp_rel_index[index] <- data_set$insp_rel_index[index] +1
       }
     }
-  } else{ # this is executed if the largest input is to the left (or exactly on) the center
+  } else{ # This is executed if the largest effect's index is to the left (or exactly on) the center input
     smallest <- which.max(data_set$est)
     value_to_add <- data_set$insp_rel_index[center] - data_set$insp_rel_index[smallest]
     data_set$insp_rel_index <- data_set$insp_rel_index + value_to_add
@@ -229,7 +240,10 @@ give_it_center <- function(data_set, center = 50){
 
 
 insp_add_sub_val <- function(data_set, center = 50){
-  # takes dataset and outputs value to add/subtract from index of a dataset depending on given center value. 
+  # This function takes a data set and the desired index placement of the greatest respiration effect as inputs.
+  # It returns the value to add (negative for subtraction) from each inspiration index of a data set in 
+  # order for the largest respiration effect to be placed at the selected index. 
+  
   if (which.max(data_set$est) > center ){
     biggest <- which.max(data_set$est)
     value_to_subtract <- data_set$insp_rel_index[center] - data_set$insp_rel_index[biggest]
@@ -242,10 +256,9 @@ insp_add_sub_val <- function(data_set, center = 50){
 }
 
 
-
-
 create_dygraphs <- function(obj, closed, ptnumber){
-  # this is a helper function that styles the residual plots
+  # This is a helper function that styles the residual plots.
+  
   if (closed==TRUE){
     res1 <- dygraph_gam(obj, resid=TRUE)
     res1$x$group <- NULL
