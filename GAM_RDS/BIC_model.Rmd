@@ -1,0 +1,128 @@
+---
+title: "BIC"
+author: "Simon Hansen"
+date: "17/5/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(waveformtools)
+library(tidyverse)
+library(mgcv)
+library(hms)
+library(shiny)
+library(shinythemes)
+library(shinyTime)
+library(data.table)
+library(readr)
+library(dygraphs)
+library(dplyr)
+library(tseries)
+library(splines)
+```
+
+```{r}
+#resp_data <- readRDS("../Datasets/thoracotomy_waveforms/comb_ventilation_data.RDS")
+dat_frame <- data.frame(matrix(ncol = 5, nrow = 0))
+x <- c("Model", "Actual Model BIC", "LM BIC", "Poly1 BIC", "Poly2 BIC")
+colnames(dat_frame) <- x
+qwerty <- 1
+df <- list.files(pattern = ".rds")
+
+
+
+for (name in df){
+  
+  
+  print(name)
+  gam_obj <- readRDS(name)
+  
+  if(!is.null(gam_obj$model$cvp)  & !is.null(gam_obj$model$qrs_rel_index) & !is.null(gam_obj$model$insp_rel_index) & !is.null(gam_obj$model$time_s)) {
+    
+    #mae_model <- mean(abs(gam_obj$residuals))
+   # spline <- lm(gam_obj$model$cvp ~ bs(gam_obj$model$qrs_rel_index * gam_obj$model$insp_rel_index + gam_obj$model$time_s))
+    lm1 <- lm(gam_obj$model$cvp ~ gam_obj$model$qrs_rel_index * gam_obj$model$insp_rel_index + gam_obj$model$time_s)
+    nlm1 <- lm(gam_obj$model$cvp~ poly(gam_obj$model$qrs_rel_index, 12) + poly(gam_obj$model$insp_rel_index, 8) + poly(gam_obj$model$time_s, 3))
+    nlm2 <- lm(gam_obj$model$cvp ~ poly(gam_obj$model$qrs_rel_index, 23) + poly(gam_obj$model$insp_rel_index, 23) + poly(gam_obj$model$time_s, 23))
+    bic_model <- BIC(gam_obj, lm1, nlm1, nlm2)
+  
+    dat_frame[qwerty, 1] <- name
+    #dat_frame[qwerty, 2] <- mae_model #MAE_model
+    dat_frame[qwerty, 2] <- bic_model[1, 2] #GAM_model
+    #dat_frame[qwerty, 3] <- bic_model[2, 2] #Spline_model
+    dat_frame[qwerty, 3] <- bic_model[2, 2] #Lm_model
+    dat_frame[qwerty, 4] <- bic_model[3, 2] #poly_12
+    dat_frame[qwerty, 5] <- bic_model[4, 2] #poly_23
+    qwerty <- qwerty + 1
+  }
+
+}
+
+write.csv(dat_frame, 'CV_BIC.csv')
+
+    
+```
+
+```{r}
+
+    mae_model <- mean(abs(pt02CLOSED$fitted.values-pt02CLOSED$y))
+
+    lm1 <- lm(pt02CLOSED$model$cvp ~ pt02CLOSED$model$qrs_rel_index * pt02CLOSED$model$insp_rel_index + pt02CLOSED$model$time_s)
+    nlm1 <- lm(pt02CLOSED$model$cvp ~ poly(pt02CLOSED$model$qrs_rel_index, 12) + poly(pt02CLOSED$model$insp_rel_index, 8) + poly(pt02CLOSED$model$time_s, 3))
+    nlm2 <- lm(pt02CLOSED$model$cvp ~ poly(pt02CLOSED$model$qrs_rel_index, 23) + poly(pt02CLOSED$model$insp_rel_index, 23) + poly(pt02CLOSED$model$time_s, 23))
+    spline <- lm(pt02CLOSED$model$cvp ~ bs(pt02CLOSED$model$qrs_rel_index * pt02CLOSED$model$insp_rel_index + pt02CLOSED$model$time_s))
+mae_model
+bic_model <- BIC(pt02CLOSED, lm1, nlm1, nlm2, spline)
+bic_model[5,2] # GAM: [1,2] = -9353. LM1: [2,2] = 7907
+
+
+```
+
+```{r}
+#resp_data <- readRDS("../Datasets/thoracotomy_waveforms/comb_ventilation_data.RDS")
+dat_frame <- data.frame(matrix(ncol = 5, nrow = 0))
+x <- c("Model", "Actual Model MAE", "LM MAE", "Poly1 MAE", "Poly2 MAE")
+colnames(dat_frame) <- x
+qwerty <- 1
+df <- list.files(pattern = ".rds")
+
+
+
+for (name in df){
+  
+  
+  print(name)
+  gam_obj <- readRDS(name)
+  
+  if(!is.null(gam_obj$model$cvp)  & !is.null(gam_obj$model$qrs_rel_index) & !is.null(gam_obj$model$insp_rel_index) & !is.null(gam_obj$model$time_s)) {
+    
+    
+   # spline <- lm(gam_obj$model$cvp ~ bs(gam_obj$model$qrs_rel_index * gam_obj$model$insp_rel_index + gam_obj$model$time_s))
+    lm1 <- lm(gam_obj$model$cvp ~ gam_obj$model$qrs_rel_index * gam_obj$model$insp_rel_index + gam_obj$model$time_s)
+    nlm1 <- lm(gam_obj$model$cvp~ poly(gam_obj$model$qrs_rel_index, 12) + poly(gam_obj$model$insp_rel_index, 8) + poly(gam_obj$model$time_s, 3))
+    nlm2 <- lm(gam_obj$model$cvp ~ poly(gam_obj$model$qrs_rel_index, 23) + poly(gam_obj$model$insp_rel_index, 23) + poly(gam_obj$model$time_s, 23))
+  #  bic_model <- BIC(gam_obj, lm1, nlm1, nlm2)
+  
+    
+    mae_model <- mean(abs(gam_obj$residuals))
+    #mae_spline <- mean(abs(spline$residuals))
+    mae_lm <- mean(abs(lm1$residuals))
+    mae_poly_12 <- mean(abs(nlm1$residuals))
+    mae_poly_23 <- mean(abs(nlm2$residuals))
+    
+    dat_frame[qwerty, 1] <- name
+    dat_frame[qwerty, 2] <- mae_model #MAE_model
+    #dat_frame[qwerty, 3] <- mae_spline #MAE_spline
+    dat_frame[qwerty, 3] <- mae_lm #MAE lm
+    dat_frame[qwerty, 4] <- mae_poly_12 #poly_12_model
+    dat_frame[qwerty, 5] <- mae_poly_23 #poly_12
+    qwerty <- qwerty + 1
+  }
+
+}
+
+write.csv(dat_frame, 'CV_MAE_BIC.csv')
+
+```
+

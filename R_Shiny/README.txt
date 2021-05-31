@@ -1,3 +1,0 @@
-This is a README for the R_shiny folder.
-
-MIN TEST H4H4

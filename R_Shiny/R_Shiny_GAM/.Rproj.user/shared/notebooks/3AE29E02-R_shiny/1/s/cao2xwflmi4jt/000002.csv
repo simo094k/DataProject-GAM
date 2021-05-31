@@ -1,5 +1,0 @@
-"0","dygraph_signal(sample_record2$vital$Intellivue$CVP) %>% dygraph_events(sample_record2$vent_event_labels)"
-"2","Registered S3 method overwritten by 'htmlwidgets':
-  method           from         
-  print.htmlwidget tools:rstudio
-"

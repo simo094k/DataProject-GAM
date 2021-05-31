@@ -1,0 +1,91 @@
+---
+title: "Heteroskedasicity_test"
+author: "Simon Hansen"
+date: "1/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(waveformtools)
+library(tidyverse)
+library(mgcv)
+library(hms)
+library(shiny)
+library(shinythemes)
+library(shinyTime)
+library(data.table)
+library(readr)
+library(dygraphs)
+library(dplyr)
+```
+
+```{r}
+filepath <- "C:/Users/simon/OneDrive - Aarhus universitet/Uni/Datavidenskab/4. semester/Dataprojekt/Project/DataProject-GAM/Datasets/thoracotomy_waveforms/pt18.RDS"
+  #"../Datasets/thoracotomy_waveforms_prelim/pt03.RDS"
+full_dataload <- readRDS(filepath, refhook = NULL)
+```
+
+```{r creating functions}
+add_time <- function(data, ms_between_obs = 8, time_origin = "2021-09-03") {
+  #' adds a column containing time with increments of ms_between_obs
+  #' data:             a dataframe like structure
+  #' ms_between_obs:   the amount of milliseconds between each cycle
+  df <- tibble(data)
+  df$time_ms <- seq(0, nrow(df)*ms_between_obs-ms_between_obs, ms_between_obs)
+  df$time_s <- df$time_ms / 1000
+  return(df)
+}
+
+create_patient <- function(filepath) {
+  #' creates a dataframe containing cvp and time in ms and s for open chest
+  #' filepath:        the path of the patient file
+  dataload <- readRDS(filepath, refhook = NULL)
+  patient <- data.frame(closed_chest_cvp = dataload$closed_chest_post_fluid$CVP ) # extract cvp numbers from data
+  patient <- add_time(patient)
+  return(patient)
+}
+```
+
+
+There are 125 measurements of CVP each second -> 1/125s = 0.008/s. 
+This means that there are 0.008 seconds between each measurement. 
+To get ms we simply multiply by 1.000.
+
+
+
+```{r initializing patient}
+pt18 <- create_patient(filepath)
+qrs_ms <- full_dataload$closed_chest_post_fluid$QRSmarker_ms 
+
+# The following code is to give an index to each measurement for which position it has in its heartbeat 
+# cycle. Also removes rows containing NAs giving only rows where we know start and end of cycle
+pt18 <- na.omit(gen_annotation_index(pt18, qrs_ms, 'time_ms', 'qrs')) 
+pt18 <- na.omit(gen_annotation_index(pt18, seq(0, nrow(pt18)*8, 5000), 'time_ms', 'insp'))
+```
+
+
+Inspect data:
+
+```{r inspecting cvp over time}
+dygraph(data = pt18[,c("time_s","closed_chest_cvp")])
+```
+
+
+We now slice after finding appropriate time slot in the above inspection. 
+Below the periode between 130s and 190s has been selected.
+
+```{r slicing data}
+pt18_sliced <- pt18[pt18$time_s > 220 & pt18$time_s < 300,]
+```
+
+# Testing for heteroskedasticity:
+
+
+```{r}
+model <- lm(data=pt18, formula=closed_chest_cvp ~ time_ms+ insp_rel_index*qrs_rel_index)
+#summary(model)
+car::ncvTest(model)
+```
+
+We find that our p-value is very low meaning that the possibility of heteroscedasticity is very low. We therefore don't find the need to account for heteroscedasticity in our gam.

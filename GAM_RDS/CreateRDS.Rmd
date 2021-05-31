@@ -1,0 +1,190 @@
+---
+title: "CreateRDS"
+output: html_document
+---
+
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE)
+library(waveformtools)
+library(tidyverse)
+library(mgcv)
+library(hms)
+library(shiny)
+library(shinythemes)
+library(shinyTime)
+library(data.table)
+library(readr)
+library(dygraphs)
+library(dplyr)
+library(tseries)
+library(mgcViz)
+setwd("C:/Users/caspe/OneDrive - Aarhus Universitet/Dokumenter/Dataprojekt/Projekt/git_simon/DataProject-GAM/GAM_RDS")
+```
+
+## Load dataset
+
+```{r}
+rm(list = ls())
+filepath <- "../Datasets/thoracotomy_waveforms/pt17.RDS"
+full_dataload <- readRDS(filepath, refhook = NULL)
+resp_data <- readRDS("../Datasets/thoracotomy_waveforms/comb_ventilation_data.RDS")
+```
+
+```{r}
+add_time <- function(data, ms_between_obs = 8, time_origin = "2021-09-03") {
+  #' adds a column containing time with increments of ms_between_obs
+  #' data:             a dataframe like structure
+  #' ms_between_obs:   the amount of milliseconds between each cycle
+  df <- tibble(data)
+  df$time_ms <- seq(0, nrow(df)*ms_between_obs-ms_between_obs, ms_between_obs)
+  df$time_s <- df$time_ms / 1000
+  return(df)
+}
+
+create_patient_closed <- function(filepath) {
+  #' creates a dataframe containing cvp and time in ms and s for open chest
+  #' filepath:        the path of the patient file
+  dataload <- readRDS(filepath, refhook = NULL)
+  patient <- data.frame(cvp = dataload$closed_chest$CVP) # extract cvp numbers from data
+  patient <- add_time(patient)
+  return(patient)
+}
+
+create_patient_open <- function(filepath) {
+  #' creates a dataframe containing cvp and time in ms and s for open chest
+  #' filepath:        the path of the patient file
+  dataload <- readRDS(filepath, refhook = NULL)
+  patient <- data.frame(cvp = dataload$open_chest$CVP) # extract cvp numbers from data
+  patient <- add_time(patient)
+  return(patient)
+}
+
+get_resp_rate <- function(filepath2 = filepath, resp_dat = resp_data, chest_closed){
+  pt_number <- substr(filepath2, nchar(filepath2)-5, nchar(filepath2)-4)
+  pt_number <- as.integer(pt_number)
+  if (chest_closed==TRUE){
+    pt_number <- pt_number*2 - 1
+  }
+  else {
+    pt_number <- pt_number*2
+  }
+  resp_rate <- resp_dat$resp_rate[pt_number]  # Get respiration rate for patient
+  if (is.nan(resp_rate)){
+    resp_rate <- 1000*60/mean(resp_data$resp_rate, na.rm=TRUE)
+  }
+  else {
+    resp_rate <- 1000*60/resp_rate # Get 60 sec as ms and divide with rate to get amount of ms between cycles
+  }
+  return(resp_rate)
+}
+
+all_in_one_patient <- function(filepath = patient_file, period = 'closed', slice_start = 130, slice_end = 190){
+  #' Creates a dataframe containing all the good stuff for either the closed or open period
+  full_dataload <- readRDS(filepath, refhook = NULL)
+  if(period == 'closed'){
+    pt3_closed <- create_patient_closed(filepath)
+    qrs_ms_closed <- full_dataload$closed_chest$QRSmarker_ms
+    pt3_closed <- na.omit(gen_annotation_index(pt3_closed, qrs_ms_closed, 'time_ms', 'qrs')) 
+    pt3_closed <- na.omit(gen_annotation_index(pt3_closed, seq(0, nrow(pt3_closed)*8, get_resp_rate(chest_closed=TRUE)), 'time_ms', 'insp'))
+    pt3_closed_sliced <- pt3_closed[pt3_closed$time_s > slice_start & pt3_closed$time_s < slice_end,]
+    return(pt3_closed_sliced)
+  }
+  else if(period == 'open'){
+    pt3_open <- create_patient_open(filepath)
+    qrs_ms_open <- full_dataload$open_chest$QRSmarker_ms
+    pt3_open <- na.omit(gen_annotation_index(pt3_open, qrs_ms_open, 'time_ms', 'qrs')) 
+    pt3_open <- na.omit(gen_annotation_index(pt3_open, seq(0, nrow(pt3_open)*8, get_resp_rate(chest_closed=FALSE)), 'time_ms', 'insp'))
+    pt3_open_sliced <- pt3_open[pt3_open$time_s > slice_start & pt3_open$time_s < slice_end,]
+    return(pt3_open_sliced)
+  }
+}
+```
+
+```{r}
+pt <- create_patient_closed(filepath)
+#qrs_ms <- full_dataload$closed_chest$QRSmarker_ms
+
+# The following code is to give an index to each measurement for which position it has in its heartbeat 
+# cycle. Also removes rows containing NAs giving only rows where we know start and end of cycle
+#pt <- na.omit(gen_annotation_index(pt, qrs_ms, 'time_ms', 'qrs')) 
+#pt <- na.omit(gen_annotation_index(pt, seq(0, nrow(pt)*8, 5000), 'time_ms', 'insp'))
+```
+
+
+
+### Test for unit root (Augmented Dickey Fuller)
+
+We use the augmented Dickey Fuller test to check the order of integration (AR_). If it is above zero, we are dealing with a time series which isn't weakly dependent nor stationary.
+
+```{r}
+adf.test(pt$cvp)
+```
+
+We cannot reject AR41. This points towards heavy autocorrelation in our time series. To visually support this claim we plot the autocorrelations:
+
+```{r}
+acf(pt$cvp)
+```
+
+Again heavy autocorrelation. At lags up to 45 we have autocorrelation. This is expected of our time series, because CVP is usually a stable value that varies inside a fine interval ([8,12]). If the CVP is increasing at one observation, it is expected to increase at the next observation as well. Therefore, the heavy autocorrelation is expected.
+
+Inspect data to find stable period of measurements:
+
+```{r inspecting cvp over time}
+dygraph(data = pt[,c("time_s","cvp")])
+```
+
+Stable period (130 - 190): 
+
+
+```{r slicing data}
+pt_sliced <- all_in_one_patient(filepath=filepath, period="closed", slice_start=342,slice_end=360)
+
+#pt_sliced <- pt[pt$time_s > 520  & pt$time_s < 595,] 
+```
+
+We try to add a rho-term to our bam-modelling to account for this autocorrelation. We expect this to reduce the complexity and the wiggliness of our smooth effects - on the other hand we could lose some confidence in our estimates.
+
+```{r}
+cvp_gam <- bam(
+        cvp ~ s(qrs_rel_index, bs = 'cc', k = 50) +
+            s(insp_rel_index, bs = 'cc', k = 30) +
+            ti(
+                qrs_rel_index,
+                insp_rel_index,
+                bs = c('cc', 'cc'),
+                k = c(20, 10)
+            ) +
+            s(time_s),
+        method = 'REML',
+        data = pt_sliced,
+        rho = 0.95,
+        nthreads = 16 # Number of (virtual) cores
+    )
+```
+
+Visualize:
+
+```{r visualising gam object, fig.width = 10, fig.height = 7, out.width="100%"}
+gratia::draw(cvp_gam)
+```
+
+
+### For saving GAM-object as RDS
+
+```{r}
+saveRDS(cvp_gam, "pt11CLOSED.rds")
+```
+
+
+```{r}
+gam_obj <- readRDS("../GAM_RDS/pt03CLOSED.RDS")
+mean(abs(gam_obj$fitted.values-gam_obj$y))
+dygraph_gam(gam_obj, resid = TRUE)
+```

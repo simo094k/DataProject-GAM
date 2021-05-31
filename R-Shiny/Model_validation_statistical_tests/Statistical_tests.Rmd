@@ -1,0 +1,192 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(waveformtools)
+library(tidyverse)
+library(mgcv)
+library(hms)
+library(shiny)
+library(shinythemes)
+library(shinyTime)
+library(data.table)
+library(readr)
+library(dygraphs)
+library(dplyr)
+library(tseries)
+
+setwd("C:/Users/caspe/OneDrive - Aarhus Universitet/Dokumenter/Dataprojekt/Projekt/git_simon/DataProject-GAM/R")
+```
+
+## Load dataset
+
+```{r}
+rm(list = ls())
+filepath <- "../Datasets/thoracotomy_waveforms/pt03.RDS"
+full_dataload <- readRDS(filepath, refhook = NULL)
+```
+
+```{r}
+add_time <- function(data, ms_between_obs = 8, time_origin = "2021-09-03") {
+  #' adds a column containing time with increments of ms_between_obs
+  #' data:             a dataframe like structure
+  #' ms_between_obs:   the amount of milliseconds between each cycle
+  df <- tibble(data)
+  df$time_ms <- seq(0, nrow(df)*ms_between_obs-ms_between_obs, ms_between_obs)
+  df$time_s <- df$time_ms / 1000
+  return(df)
+}
+
+create_patient <- function(filepath) {
+  #' creates a dataframe containing cvp and time in ms and s for open chest
+  #' filepath:        the path of the patient file
+  dataload <- readRDS(filepath, refhook = NULL)
+  patient <- data.frame(closed_chest_cvp = dataload$closed_chest$CVP) # extract cvp numbers from data
+  patient <- add_time(patient)
+  return(patient)
+}
+```
+
+```{r}
+pt03 <- create_patient(filepath)
+qrs_ms <- full_dataload$closed_chest$QRSmarker_ms
+
+# The following code is to give an index to each measurement for which position it has in its heartbeat 
+# cycle. Also removes rows containing NAs giving only rows where we know start and end of cycle
+pt03 <- na.omit(gen_annotation_index(pt03, qrs_ms, 'time_ms', 'qrs')) 
+pt03 <- na.omit(gen_annotation_index(pt03, seq(0, nrow(pt03)*8, 5000), 'time_ms', 'insp'))
+```
+
+
+### Test for unit root (Augmented Dickey Fuller)
+
+We use the augmented Dickey Fuller test to check the order of integration (AR_). If it is above zero, we are dealing with a time series which isn't weakly dependent nor stationary.
+
+```{r}
+adf.test(pt18$open_chest_cvp)
+```
+
+We cannot reject AR41. This points towards heavy autocorrelation in our time series. To visually support this claim we plot the autocorrelations:
+
+```{r}
+acf(pt18$open_chest_cvp)
+```
+
+Again heavy autocorrelation. At lags up to 45 we have autocorrelation. This is expected of our time series, because CVP is usually a stable value that varies inside a fine interval ([8,12]). If the CVP is increasing at one observation, it is expected to increase at the next observation as well. Therefore, the heavy autocorrelation is expected.
+
+Inspect data to find stable period of measurements:
+
+```{r inspecting cvp over time}
+dygraph(data = pt03[,c("time_s","closed_chest_cvp")])
+```
+
+Stable period (130 - 190): 
+
+```{r slicing data}
+pt_sliced <- pt03[pt03$time_s > 50 & pt03$time_s < 134,]
+```
+
+We try to add a rho-term to our bam-modelling to account for this autocorrelation. We expect this to reduce the complexity and the wiggliness of our smooth effects - on the other hand we could lose some confidence in our estimates.
+
+```{r}
+cvp_gam <- bam(
+        closed_chest_cvp ~ s(qrs_rel_index, bs = 'cc', k = 50) +
+            s(insp_rel_index, bs = 'cc', k = 30) +
+            ti(
+                qrs_rel_index,
+                insp_rel_index,
+                bs = c('cc', 'cc'),
+                k = c(20, 10)
+            ) +
+            s(time_s),
+        method = 'REML',
+        data = pt_sliced,
+        rho = 0.95,
+        nthreads = 16 # Number of (virtual) cores
+    )
+```
+
+Visualize:
+
+```{r visualising gam object, fig.width = 10, fig.height = 7, out.width="100%"}
+gratia::draw(cvp_gam)
+```
+
+### Using BIC to validate our model.
+
+Compared with linear model (note it is obviously not a linear relation, so intuitively a bad value for the linear model). Lower BIC indicates less loss of information.
+
+```{r}
+lm1 <- lm(closed_chest_cvp ~ qrs_rel_index * insp_rel_index + time_s, data = pt_sliced)
+
+BIC(cvp_gam, lm1)
+```
+
+```{r}
+nlm1 <- lm(closed_chest_cvp ~ poly(qrs_rel_index, 12) + poly(insp_rel_index, 8) + qrs_rel_index:insp_rel_index + poly(time_s, 3), data = pt_sliced)
+
+BIC(nlm1, cvp_gam, lm1)
+```
+
+
+### Testing for heteroskedasticity:
+
+Now we will test for heteroscedasticity. This means that the variance of our cvp measurements changes depending on our explanatory variables.
+
+```{r}
+model <- lm(data=pt18, formula=closed_chest_cvp ~ time_ms+ insp_rel_index*qrs_rel_index)
+#summary(model)
+car::ncvTest(model)
+```
+
+We find that our p-value is very low meaning that the possibility of heteroscedasticity is very low. We therefore don't find the need to account for heteroscedasticity in our gam.
+
+
+### Cross validation
+
+```{r}
+maes <- data.frame()  # Create empty df to store CV squared error values
+scores <- data.frame()  # Create empty df to store CV R2 values
+set.seed(42)  # Set seed for reproducibility
+k <- 10  # Define number of folds
+for (i in 1:k) {
+  # Create weighting column
+  pt_sliced$weight <- sample(c(0,1),size=nrow(pt_sliced),replace=TRUE,prob=c(0.2,0.8))  # 0 Indicates testing sample, 1 training sample
+  
+  # Generate training dataset
+  trainingdata <- pt_sliced[pt_sliced$weight == 1, ]  # Select training data by weight  
+
+  # Generate test dataset
+  testdata <- pt_sliced[pt_sliced$weight == 0, ]  # Select test data by weight
+  
+  # Run GAM with MRF
+  # ctrl <- gam.control(nthreads = 6) #Set controls
+  m <- bam(
+        closed_chest_cvp ~ s(qrs_rel_index, bs = 'cc', k = 50) +
+            s(insp_rel_index, bs = 'cc', k = 30) +
+            ti(
+                qrs_rel_index,
+                insp_rel_index,
+                bs = c('cc', 'cc'),
+                k = c(20, 10)
+            ) +
+            s(time_s),
+        method = 'REML',
+        data = trainingdata,
+        rho = 0.95,
+        nthreads = 16  # Number of (virtual) cores
+    )
+  
+  # Predict test data
+  pred <- predict(m,newdata=testdata)
+  # Extract MSES
+  mses[i,1] <- mean(abs(pt_sliced$closed_chest_cvp[pt_sliced$weight==0] - pred))
+  scores[i,1] <- summary(m)$r.sq
+}
+av.mse.GMRF <- mean(mses$V1)
+av.r2.GMRF <- mean(scores$V1)
+```
+
